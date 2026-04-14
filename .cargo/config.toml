@@ -1,0 +1,10 @@
+[build]
+# Treat all compiler warnings as errors across the entire workspace.
+# This matches industry practice: warnings in flight software are defects.
+rustflags = ["-D", "warnings"]
+
+[alias]
+# Convenience aliases
+check-all = "clippy --workspace --all-targets --all-features"
+doc-all   = "doc --workspace --no-deps --open"
+test-all  = "test --workspace"

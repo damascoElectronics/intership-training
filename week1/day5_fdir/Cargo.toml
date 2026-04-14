@@ -1,0 +1,39 @@
+[package]
+name = "day5-fdir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "01_watchdog"
+path = "examples/01_watchdog.rs"
+
+[[example]]
+name = "02_circuit_breaker"
+path = "examples/02_circuit_breaker.rs"
+
+[[example]]
+name = "03_health_table"
+path = "examples/03_health_table.rs"
+
+[[example]]
+name = "04_supervisor"
+path = "examples/04_supervisor.rs"
+
+[[example]]
+name = "05_safe_state"
+path = "examples/05_safe_state.rs"
+
+[[example]]
+name = "ex1_fdir_chain"
+path = "exercises/ex1_fdir_chain.rs"
+
+[[example]]
+name = "ex1_fdir_chain_sol"
+path = "exercises/ex1_fdir_chain_sol.rs"

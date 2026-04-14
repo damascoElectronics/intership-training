@@ -1,0 +1,38 @@
+[package]
+name = "day3-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+cc = "1"
+
+[dependencies]
+# No external deps needed for basic FFI
+
+[[example]]
+name = "01_manual_bindings"
+path = "examples/01_manual_bindings.rs"
+
+[[example]]
+name = "02_safe_wrapper"
+path = "examples/02_safe_wrapper.rs"
+
+[[example]]
+name = "03_export_to_c"
+path = "examples/03_export_to_c.rs"
+
+[[example]]
+name = "04_strings_across_ffi"
+path = "examples/04_strings_across_ffi.rs"
+
+[[example]]
+name = "05_errors_across_ffi"
+path = "examples/05_errors_across_ffi.rs"
+
+[[example]]
+name = "ex1_wrap_c_driver"
+path = "exercises/ex1_wrap_c_driver.rs"
+
+[[example]]
+name = "ex1_wrap_c_driver_sol"
+path = "exercises/ex1_wrap_c_driver_sol.rs"

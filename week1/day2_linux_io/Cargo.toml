@@ -1,0 +1,47 @@
+[package]
+name = "day2-linux-io"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio        = { workspace = true }
+tokio-util   = { workspace = true }
+tokio-serial = { workspace = true }
+bytes        = { workspace = true }
+nix          = { workspace = true }
+
+[[example]]
+name = "01_sysfs_gpio"
+path = "examples/01_sysfs_gpio.rs"
+
+[[example]]
+name = "02_tty_serial"
+path = "examples/02_tty_serial.rs"
+
+[[example]]
+name = "03_chardev_ioctl"
+path = "examples/03_chardev_ioctl.rs"
+
+[[example]]
+name = "04_sysfs_poll"
+path = "examples/04_sysfs_poll.rs"
+
+[[example]]
+name = "05_procfs_reader"
+path = "examples/05_procfs_reader.rs"
+
+[[example]]
+name = "ex1_uart_echo"
+path = "exercises/ex1_uart_echo.rs"
+
+[[example]]
+name = "ex1_uart_echo_sol"
+path = "exercises/ex1_uart_echo_sol.rs"
+
+[[example]]
+name = "ex2_sysfs_poll"
+path = "exercises/ex2_sysfs_poll.rs"
+
+[[example]]
+name = "ex2_sysfs_poll_sol"
+path = "exercises/ex2_sysfs_poll_sol.rs"

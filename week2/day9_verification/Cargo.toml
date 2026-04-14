@@ -1,0 +1,35 @@
+[package]
+name = "day9-verification"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proptest = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+loom = "0.7"
+
+[[example]]
+name = "01_proptest_packet"
+path = "examples/01_proptest_packet.rs"
+
+[[example]]
+name = "02_proptest_state_machine"
+path = "examples/02_proptest_state_machine.rs"
+
+[[example]]
+name = "03_property_tests"
+path = "examples/03_property_tests.rs"
+
+[[example]]
+name = "04_miri_safety"
+path = "examples/04_miri_safety.rs"
+
+[[example]]
+name = "ex1_proptest_codec"
+path = "exercises/ex1_proptest_codec.rs"
+
+[[example]]
+name = "ex1_proptest_codec_sol"
+path = "exercises/ex1_proptest_codec_sol.rs"

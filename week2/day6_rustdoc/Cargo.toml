@@ -1,0 +1,19 @@
+[package]
+name = "day6-rustdoc"
+version = "0.1.0"
+edition = "2021"
+
+# Enforce documentation on all public items
+[package.metadata]
+# Note: add #![deny(missing_docs)] in lib.rs
+
+[dependencies]
+thiserror = { workspace = true }
+
+[[example]]
+name = "ex1_document_api"
+path = "exercises/ex1_document_api.rs"
+
+[[example]]
+name = "ex1_document_api_sol"
+path = "exercises/ex1_document_api_sol.rs"

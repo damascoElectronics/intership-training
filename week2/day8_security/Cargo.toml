@@ -1,0 +1,43 @@
+[package]
+name = "day8-security"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+rand = { workspace = true }
+nix = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "01_capability_drop"
+path = "examples/01_capability_drop.rs"
+
+[[example]]
+name = "02_hmac_tc"
+path = "examples/02_hmac_tc.rs"
+
+[[example]]
+name = "03_replay_protection"
+path = "examples/03_replay_protection.rs"
+
+[[example]]
+name = "04_unsafe_audit"
+path = "examples/04_unsafe_audit.rs"
+
+[[example]]
+name = "05_privilege_separation"
+path = "examples/05_privilege_separation.rs"
+
+[[example]]
+name = "ex1_secure_tc_receiver"
+path = "exercises/ex1_secure_tc_receiver.rs"
+
+[[example]]
+name = "ex1_secure_tc_receiver_sol"
+path = "exercises/ex1_secure_tc_receiver_sol.rs"

@@ -1,0 +1,6 @@
+[toolchain]
+channel  = "stable"
+components = ["rustfmt", "clippy", "rust-src"]
+# Pinning the channel ensures every developer and every CI run uses the same
+# compiler. For flight software this would be a specific version number;
+# for training "stable" is fine.

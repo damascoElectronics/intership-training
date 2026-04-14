@@ -1,0 +1,24 @@
+[package]
+name = "week1-sensor-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sensor-daemon"
+path = "src/main.rs"
+
+[[bin]]
+name = "sensor-sim"
+path = "simulator/sensor_sim.rs"
+
+[dependencies]
+tokio              = { workspace = true }
+tokio-util         = { workspace = true }
+bytes              = { workspace = true }
+thiserror          = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+bincode            = { workspace = true }
+zbus               = { workspace = true }

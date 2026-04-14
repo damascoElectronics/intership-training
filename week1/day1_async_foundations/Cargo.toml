@@ -1,0 +1,36 @@
+[package]
+name = "day1-async-foundations"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+
+[[example]]
+name = "01_basic_runtime"
+path = "examples/01_basic_runtime.rs"
+
+[[example]]
+name = "02_spawn_tasks"
+path = "examples/02_spawn_tasks.rs"
+
+[[example]]
+name = "03_channels"
+path = "examples/03_channels.rs"
+
+[[example]]
+name = "04_select_macro"
+path = "examples/04_select_macro.rs"
+
+[[example]]
+name = "05_graceful_shutdown"
+path = "examples/05_graceful_shutdown.rs"
+
+[[example]]
+name = "ex1_heartbeat"
+path = "exercises/ex1_heartbeat.rs"
+
+[[example]]
+name = "ex1_heartbeat_sol"
+path = "exercises/ex1_heartbeat_sol.rs"

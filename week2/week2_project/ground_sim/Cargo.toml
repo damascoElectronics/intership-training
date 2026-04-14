@@ -1,0 +1,21 @@
+[package]
+name = "ground-sim"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ground-sim"
+path = "src/main.rs"
+
+[dependencies]
+obc-core           = { path = "../obc_core" }
+tokio              = { workspace = true }
+tokio-util         = { workspace = true }
+bytes              = { workspace = true }
+hmac               = { workspace = true }
+sha2               = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror          = { workspace = true }
+bincode            = { workspace = true }
+serde              = { workspace = true }
