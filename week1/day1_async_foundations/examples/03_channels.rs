@@ -193,10 +193,12 @@ async fn demo_broadcast() {
                 Ok(HealthEvent::OverTemperature { zone, temp_c }) => {
                     println!("  CmdHandler: ALERT! Zone {zone} over-temperature at {temp_c:.1}°C — initiating safe mode");
                 }
+                Ok(HealthEvent::SensorOnline(id)) => {
+                    println!("  CmdHandler: Sensor {id} online — nominal");
+                }
                 Ok(HealthEvent::SensorOffline(id)) => {
                     println!("  CmdHandler: Sensor {id} offline — degraded mode");
                 }
-                Ok(_) => {} // ignore other events
                 Err(broadcast::error::RecvError::Closed) => break,
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     println!("  CmdHandler: missed {n} events");
