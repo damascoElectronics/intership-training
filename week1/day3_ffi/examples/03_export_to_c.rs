@@ -1,131 +1,131 @@
-/// Example 03 — Exporting Rust functions to C
+/// Ejemplo 03 — Exportar funciones Rust a C
 ///
-/// So far we've called C from Rust. This example goes the other direction:
-/// writing a Rust function that C code can call.
+/// Hasta ahora hemos llamado C desde Rust. Este ejemplo va en la otra dirección:
+/// escribir una función Rust que el código C pueda llamar.
 ///
-/// Two attributes are required:
-///   - `extern "C"`: use the C calling convention (not Rust's internal ABI)
-///   - `#[no_mangle]`: prevent Rust's name-mangling so C can find the symbol
+/// Se requieren dos atributos:
+///   - `extern "C"`: usar la convención de llamada C (no el ABI interno de Rust)
+///   - `#[no_mangle]`: impedir la codificación de nombres de Rust para que C pueda encontrar el símbolo
 ///
-/// WHY no_mangle matters:
-///   Without it, Rust turns `rust_ccsds_validate` into something like
+/// POR QUÉ no_mangle importa:
+///   Sin él, Rust convierte `rust_ccsds_validate` en algo como
 ///   `_ZN7day3_ffi20rust_ccsds_validate17h3a4b5c6d7e8f9g0hE`.
-///   C code doing `extern int rust_ccsds_validate(...)` would fail to link.
-///   `#[no_mangle]` keeps the symbol name exactly as written.
+///   El código C que haga `extern int rust_ccsds_validate(...)` fallaría al enlazar.
+///   `#[no_mangle]` mantiene el nombre del símbolo exactamente como está escrito.
 ///
-/// This pattern is used when:
-///   - You're writing a new Rust library to replace part of a C codebase
-///   - You want to call Rust from an existing C main() or RTOS task
-///   - You're building a plugin/callback system where C calls registered Rust fns
+/// Este patrón se usa cuando:
+///   - Estás escribiendo una nueva biblioteca Rust para reemplazar parte de una base de código C
+///   - Quieres llamar Rust desde un main() C existente o una tarea RTOS
+///   - Estás construyendo un sistema de plugins/callbacks donde C llama funciones Rust registradas
 ///
-/// For large exported APIs, the `cbindgen` tool reads your Rust source and
-/// auto-generates the corresponding C header. The comment at the bottom shows
-/// what cbindgen would produce for the function defined here.
+/// Para APIs exportadas grandes, la herramienta `cbindgen` lee tu código fuente Rust y
+/// genera automáticamente la cabecera C correspondiente. El comentario al final muestra
+/// lo que cbindgen produciría para la función definida aquí.
 
 use std::slice;
 
 // ──────────────────────────────────────────────────────────────────────────────
-// The exported function
+// La función exportada
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Validates a raw CCSDS primary header buffer.
+/// Valida un buffer de cabecera primaria CCSDS crudo.
 ///
-/// This function is exported with C linkage so that C code can call it:
+/// Esta función se exporta con enlace C para que el código C pueda llamarla:
 ///   `extern int rust_ccsds_validate(const uint8_t *raw, size_t len);`
 ///
-/// Return values (matching C convention — no Rust Result here):
-///   0  → valid CCSDS primary header
-///  -1  → null pointer passed
-///  -2  → buffer too short (need at least 6 bytes)
-///  -3  → invalid CCSDS version (bits 15-13 of byte 0 must be 0b000)
-///  -4  → APID 0x7FF is the IDLE/fill packet APID, treated as invalid for TC
+/// Valores de retorno (siguiendo la convención C — no hay Result de Rust aquí):
+///   0  → cabecera primaria CCSDS válida
+///  -1  → puntero nulo pasado
+///  -2  → buffer demasiado corto (se necesitan al menos 6 bytes)
+///  -3  → versión CCSDS inválida (los bits 15-13 del byte 0 deben ser 0b000)
+///  -4  → APID 0x7FF es el APID de paquete IDLE/relleno, tratado como inválido para TC
 ///
 /// # Safety
 ///
-/// The caller must ensure:
-///   - `raw` is non-null (or the function returns -1)
-///   - `raw` points to a contiguous buffer of at least `len` bytes
-///   - The buffer remains valid for the duration of this call
-///   - No other thread mutates the buffer during this call
+/// El llamador debe asegurarse de que:
+///   - `raw` no sea nulo (o la función devuelve -1)
+///   - `raw` apunte a un buffer contiguo de al menos `len` bytes
+///   - El buffer permanezca válido durante la duración de esta llamada
+///   - Ningún otro hilo mute el buffer durante esta llamada
 ///
-/// This is an `unsafe extern "C"` fn because Rust cannot verify the caller
-/// upholds these invariants at compile time.
+/// Esta es una `unsafe extern "C"` fn porque Rust no puede verificar que el llamador
+/// cumpla estas invariantes en tiempo de compilación.
 #[no_mangle]
 pub unsafe extern "C" fn rust_ccsds_validate(raw: *const u8, len: usize) -> i32 {
-    // ── Guard 1: null pointer check ──────────────────────────────────────────
-    // In C it's possible (even common) to pass NULL by mistake.
-    // We check this first because any deref of a null ptr is UB.
+    // ── Guardia 1: verificación de puntero nulo ──────────────────────────────────────────
+    // En C es posible (incluso común) pasar NULL por error.
+    // Verificamos esto primero porque cualquier desreferencia de un puntero nulo es UB.
     if raw.is_null() {
         return -1;
     }
 
-    // ── Guard 2: length check ────────────────────────────────────────────────
-    // A CCSDS primary header is always exactly 6 bytes. If we have fewer,
-    // we cannot meaningfully validate it.
+    // ── Guardia 2: verificación de longitud ────────────────────────────────────────────
+    // Una cabecera primaria CCSDS siempre tiene exactamente 6 bytes. Si tenemos menos,
+    // no podemos validarla de manera significativa.
     if len < 6 {
         return -2;
     }
 
-    // ── Build a safe Rust slice ──────────────────────────────────────────────
-    // Safety: we checked raw is non-null and len >= 6 above.
-    // slice::from_raw_parts requires: valid ptr, in-bounds len, single object.
-    // The caller's contract (documented in Safety section above) covers the rest.
+    // ── Construir un slice Rust seguro ──────────────────────────────────────────────
+    // Safety: verificamos que raw no es nulo y len >= 6 arriba.
+    // slice::from_raw_parts requiere: puntero válido, len dentro de límites, objeto único.
+    // El contrato del llamador (documentado en la sección Safety arriba) cubre el resto.
     let buf: &[u8] = slice::from_raw_parts(raw, len);
 
-    // ── Guard 3: version field ───────────────────────────────────────────────
-    // CCSDS 133.0-B-2 specifies the 3 most significant bits of byte 0 as
-    // the "version number", which must be 0b000 (= 0).
-    // Bits 7-5 of byte 0 = (buf[0] >> 5) & 0x07
+    // ── Guardia 3: campo de versión ───────────────────────────────────────────────────
+    // CCSDS 133.0-B-2 especifica los 3 bits más significativos del byte 0 como
+    // el "número de versión", que debe ser 0b000 (= 0).
+    // Bits 7-5 del byte 0 = (buf[0] >> 5) & 0x07
     let version = (buf[0] >> 5) & 0x07;
     if version != 0 {
         return -3;
     }
 
-    // ── Guard 4: idle packet check ───────────────────────────────────────────
-    // APID 0x7FF (all 1s) is the CCSDS idle/fill packet APID.
-    // In many spacecraft implementations, routing a fill packet to a service
-    // as if it were a real command would be a serious error.
-    // bits 10-0 of bytes 0-1: (byte0 & 0x07) << 8 | byte1
+    // ── Guardia 4: verificación de paquete inactivo ───────────────────────────────────────
+    // APID 0x7FF (todos 1s) es el APID de paquete inactivo/relleno de CCSDS.
+    // En muchas implementaciones de naves espaciales, enrutar un paquete de relleno a un servicio
+    // como si fuera un comando real sería un error grave.
+    // bits 10-0 de los bytes 0-1: (byte0 & 0x07) << 8 | byte1
     let apid = (((buf[0] & 0x07) as u16) << 8) | (buf[1] as u16);
     if apid == 0x7FF {
         return -4;
     }
 
-    // All checks passed.
+    // Todas las verificaciones pasaron.
     0
 }
 
-/// Returns a human-readable description of a rust_ccsds_validate return code.
+/// Devuelve una descripción legible por humanos de un código de retorno de rust_ccsds_validate.
 ///
-/// This is a helper exported alongside the validator so C callers can produce
-/// diagnostic messages without embedding the meaning of each code themselves.
+/// Este es un auxiliar exportado junto al validador para que los llamadores C puedan producir
+/// mensajes de diagnóstico sin incorporar el significado de cada código ellos mismos.
 ///
 /// # Safety
 ///
-/// The returned pointer is valid for `'static` (points to a string literal).
-/// The caller must NOT free it.
+/// El puntero devuelto es válido por `'static` (apunta a una literal de cadena).
+/// El llamador NO debe liberarlo.
 #[no_mangle]
 pub extern "C" fn rust_ccsds_validate_strerror(code: i32) -> *const std::os::raw::c_char {
-    // We use byte string literals with explicit null terminator.
-    // b"text\0".as_ptr() gives a *const u8; cast to *const c_char for C.
+    // Usamos literales de cadenas de bytes con terminador nulo explícito.
+    // b"texto\0".as_ptr() da un *const u8; convertir a *const c_char para C.
     match code {
-        0  => b"valid CCSDS primary header\0".as_ptr() as *const std::os::raw::c_char,
-        -1 => b"null pointer\0".as_ptr() as *const std::os::raw::c_char,
-        -2 => b"buffer too short (need >= 6 bytes)\0".as_ptr() as *const std::os::raw::c_char,
-        -3 => b"invalid CCSDS version field (must be 0b000)\0".as_ptr() as *const std::os::raw::c_char,
-        -4 => b"APID 0x7FF is idle/fill packet\0".as_ptr() as *const std::os::raw::c_char,
-        _  => b"unknown error code\0".as_ptr() as *const std::os::raw::c_char,
+        0  => b"cabecera primaria CCSDS valida\0".as_ptr() as *const std::os::raw::c_char,
+        -1 => b"puntero nulo\0".as_ptr() as *const std::os::raw::c_char,
+        -2 => b"buffer demasiado corto (necesita >= 6 bytes)\0".as_ptr() as *const std::os::raw::c_char,
+        -3 => b"campo de version CCSDS invalido (debe ser 0b000)\0".as_ptr() as *const std::os::raw::c_char,
+        -4 => b"APID 0x7FF es paquete inactivo/relleno\0".as_ptr() as *const std::os::raw::c_char,
+        _  => b"codigo de error desconocido\0".as_ptr() as *const std::os::raw::c_char,
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Internal test: use the function via its Rust signature (safe wrapper for tests)
+// Prueba interna: usar la función mediante su firma Rust (envoltura segura para pruebas)
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Safe test-only wrapper so we don't have to write unsafe in every test.
+/// Envoltura de prueba segura para no tener que escribir unsafe en cada prueba.
 fn validate(raw: &[u8]) -> i32 {
-    // Safety: raw.as_ptr() is non-null (slice refs are never null),
-    // raw.len() is the actual length, buffer is valid for the call duration.
+    // Safety: raw.as_ptr() no es nulo (las referencias de slice nunca son nulas),
+    // raw.len() es la longitud real, el buffer es válido durante la duración de la llamada.
     unsafe { rust_ccsds_validate(raw.as_ptr(), raw.len()) }
 }
 
@@ -135,14 +135,14 @@ mod tests {
 
     #[test]
     fn valid_tc_header() {
-        // APID=0x100, type=TC (byte0 bit4=1), version=0b000 → byte0=0x11
+        // APID=0x100, tipo=TC (bit4 del byte0=1), versión=0b000 → byte0=0x11
         let raw = [0x11u8, 0x00, 0xC0, 0x01, 0x00, 0x03];
         assert_eq!(validate(&raw), 0);
     }
 
     #[test]
     fn valid_tm_header() {
-        // APID=0x050, type=TM, version=0b000 → byte0=0x00, byte1=0x50
+        // APID=0x050, tipo=TM, versión=0b000 → byte0=0x00, byte1=0x50
         let raw = [0x00u8, 0x50, 0xC0, 0x2A, 0x00, 0x0F];
         assert_eq!(validate(&raw), 0);
     }
@@ -155,21 +155,21 @@ mod tests {
 
     #[test]
     fn too_short() {
-        let raw = [0x00u8, 0x50, 0xC0]; // only 3 bytes
+        let raw = [0x00u8, 0x50, 0xC0]; // solo 3 bytes
         assert_eq!(validate(&raw), -2);
     }
 
     #[test]
     fn bad_version_field() {
-        // Set version to 0b001 in byte 0: (0b001 << 5) | type bits
-        let raw = [0x20u8, 0x50, 0xC0, 0x00, 0x00, 0x00]; // version = 1
+        // Establecer versión a 0b001 en byte 0: (0b001 << 5) | bits de tipo
+        let raw = [0x20u8, 0x50, 0xC0, 0x00, 0x00, 0x00]; // versión = 1
         assert_eq!(validate(&raw), -3);
     }
 
     #[test]
     fn idle_packet_apid() {
         // APID 0x7FF = 0b111_1111_1111
-        // byte0: version=000, type=0, sec=0, apid[10:8]=111 → 0b0000_0111 = 0x07
+        // byte0: versión=000, tipo=0, sec=0, apid[10:8]=111 → 0b0000_0111 = 0x07
         // byte1: apid[7:0] = 0xFF
         let raw = [0x07u8, 0xFF, 0xC0, 0x00, 0x00, 0x00];
         assert_eq!(validate(&raw), -4);
@@ -177,40 +177,40 @@ mod tests {
 }
 
 fn main() {
-    println!("=== Example 03: Exporting Rust Functions to C ===\n");
+    println!("=== Ejemplo 03: Exportar Funciones Rust a C ===\n");
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Demonstrate calling the exported function from Rust itself
-    // (In practice this would be called from C code, but we can test it here.)
+    // Demostrar la llamada a la función exportada desde el propio Rust
+    // (En la práctica esto sería llamado desde código C, pero podemos probarlo aquí.)
     // ──────────────────────────────────────────────────────────────────────────
 
     let test_cases: &[(&str, &[u8])] = &[
-        ("Valid TC (APID=0x100)", &[0x11, 0x00, 0xC0, 0x01, 0x00, 0x03]),
-        ("Valid TM (APID=0x050)", &[0x00, 0x50, 0xC0, 0x2A, 0x00, 0x0F]),
-        ("Too short (3 bytes)",   &[0x11, 0x00, 0xC0]),
-        ("Bad version (v=1)",     &[0x20, 0x50, 0xC0, 0x00, 0x00, 0x00]),
-        ("Idle APID (0x7FF)",     &[0x07, 0xFF, 0xC0, 0x00, 0x00, 0x00]),
+        ("TC válido (APID=0x100)", &[0x11, 0x00, 0xC0, 0x01, 0x00, 0x03]),
+        ("TM válido (APID=0x050)", &[0x00, 0x50, 0xC0, 0x2A, 0x00, 0x0F]),
+        ("Demasiado corto (3 bytes)",  &[0x11, 0x00, 0xC0]),
+        ("Versión incorrecta (v=1)",   &[0x20, 0x50, 0xC0, 0x00, 0x00, 0x00]),
+        ("APID inactivo (0x7FF)",      &[0x07, 0xFF, 0xC0, 0x00, 0x00, 0x00]),
     ];
 
     for (description, raw) in test_cases {
         let code = validate(raw);
-        // Safety for strerror: returns *const c_char pointing to a static string.
+        // Safety para strerror: devuelve *const c_char apuntando a una cadena estática.
         let msg_ptr = rust_ccsds_validate_strerror(code);
         let msg = unsafe { std::ffi::CStr::from_ptr(msg_ptr).to_str().unwrap() };
-        println!("  {:<30}  → code {:2}  ({})", description, code, msg);
+        println!("  {:<35}  → código {:2}  ({})", description, code, msg);
     }
 
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // CBINDGEN COMMENTARY
+    // COMENTARIO CBINDGEN
     //
-    // If this crate were built as a `crate-type = ["cdylib"]` or `["staticlib"]`,
-    // you'd add cbindgen to your build.rs and it would auto-generate a C header.
+    // Si este crate se construyera como `crate-type = ["cdylib"]` o `["staticlib"]`,
+    // añadirías cbindgen a tu build.rs y generaría automáticamente una cabecera C.
     //
-    // The header cbindgen would produce for the above functions:
+    // La cabecera que cbindgen produciría para las funciones anteriores:
     //
-    //   /* Auto-generated by cbindgen — do not edit */
+    //   /* Generado automáticamente por cbindgen — no editar */
     //   #ifndef RUST_CCSDS_VALIDATE_H
     //   #define RUST_CCSDS_VALIDATE_H
     //   #include <stdint.h>
@@ -221,14 +221,14 @@ fn main() {
     //   #endif
     //
     //   /**
-    //    * Validates a raw CCSDS primary header buffer.
-    //    * Returns: 0 valid, -1 null ptr, -2 too short, -3 bad version, -4 idle APID
+    //    * Valida un buffer de cabecera primaria CCSDS crudo.
+    //    * Devuelve: 0 válido, -1 puntero nulo, -2 demasiado corto, -3 versión incorrecta, -4 APID inactivo
     //    */
     //   int32_t rust_ccsds_validate(const uint8_t *raw, size_t len);
     //
     //   /**
-    //    * Returns a static C string describing a rust_ccsds_validate return code.
-    //    * The returned pointer is valid forever; do NOT free it.
+    //    * Devuelve una cadena C estática describiendo un código de retorno de rust_ccsds_validate.
+    //    * El puntero devuelto es válido para siempre; NO lo liberes.
     //    */
     //   const char *rust_ccsds_validate_strerror(int32_t code);
     //
@@ -238,10 +238,10 @@ fn main() {
     //
     //   #endif /* RUST_CCSDS_VALIDATE_H */
     //
-    // cbindgen reads #[no_mangle] pub extern "C" functions and their doc comments,
-    // then generates this header automatically. This is the recommended approach
-    // for any exported API larger than a few functions.
+    // cbindgen lee las funciones #[no_mangle] pub extern "C" y sus comentarios de documentación,
+    // luego genera esta cabecera automáticamente. Este es el enfoque recomendado
+    // para cualquier API exportada mayor que unas pocas funciones.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("See comments in source for the cbindgen-generated C header.");
-    println!("\nAll validation tests: PASSED");
+    println!("Ver comentarios en el fuente para la cabecera C generada por cbindgen.");
+    println!("\nTodas las pruebas de validación: PASADAS");
 }

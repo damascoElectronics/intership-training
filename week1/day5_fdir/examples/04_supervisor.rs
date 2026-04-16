@@ -1,19 +1,19 @@
-//! Example 04: Supervisor Task Pattern
+//! Ejemplo 04: Patrón de Tarea Supervisora
 //!
-//! Erlang's actor model is built around "let it crash": don't defensively handle
-//! every possible error inside a process; instead, let it crash and rely on the
-//! supervisor to restart it. This keeps business logic clean and separates fault
-//! recovery into a dedicated layer.
+//! El modelo de actores de Erlang se construye alrededor del "dejar que se caiga": no manejar
+//! defensivamente cada error posible dentro de un proceso; en cambio, dejar que se caiga y
+//! confiar en que el supervisor lo reinicie. Esto mantiene la lógica de negocio limpia y
+//! separa la recuperación de fallos en una capa dedicada.
 //!
-//! We adapt this for Rust async:
-//! - Tasks are cheap (Tokio green threads).
-//! - If a task returns Err or panics via `JoinHandle`, the supervisor catches it.
-//! - The supervisor restarts with exponential backoff to avoid hammering a broken
-//!   resource in a tight loop (crash-loop protection).
-//! - After `max_restarts` attempts, the supervisor gives up and marks the component
-//!   Failed in the HealthTable — a human or higher-level FDIR must intervene.
+//! Adaptamos esto para Rust async:
+//! - Las tareas son baratas (hilos verdes de Tokio).
+//! - Si una tarea devuelve Err o entra en pánico a través de un `JoinHandle`, el supervisor lo captura.
+//! - El supervisor reinicia con retroceso exponencial para evitar martillar un recurso roto
+//!   en un bucle cerrado (protección contra crash-loop).
+//! - Tras `max_restarts` intentos, el supervisor se rinde y marca el componente como
+//!   Failed en la HealthTable — un humano o FDIR de mayor nivel debe intervenir.
 //!
-//! Run: cargo run --example 04_supervisor
+//! Ejecutar: cargo run --example 04_supervisor
 
 use std::{
     collections::HashMap,
@@ -32,7 +32,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 // ---------------------------------------------------------------------------
-// Shared types (abbreviated from 03_health_table.rs for standalone compilation)
+// Tipos compartidos (abreviados de 03_health_table.rs para compilación independiente)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +64,7 @@ impl HealthTable {
     }
 
     pub fn set(&mut self, id: &str, state: HealthState) {
-        info!(component = %id, state = %state, "health updated");
+        info!(component = %id, state = %state, "salud actualizada");
         self.entries.insert(id.to_string(), state);
     }
 }
@@ -72,14 +72,14 @@ impl HealthTable {
 pub type SharedHealth = Arc<RwLock<HealthTable>>;
 
 // ---------------------------------------------------------------------------
-// Task error type
+// Tipo de error de tarea
 // ---------------------------------------------------------------------------
 
 #[derive(thiserror::Error, Debug)]
 pub enum TaskError {
-    #[error("transient error: {0}")]
+    #[error("error transitorio: {0}")]
     Transient(String),
-    #[error("fatal error: {0}")]
+    #[error("error fatal: {0}")]
     Fatal(String),
 }
 
@@ -87,27 +87,28 @@ pub enum TaskError {
 // TaskSpec
 // ---------------------------------------------------------------------------
 
-/// Describes a supervised task.
+/// Describe una tarea supervisada.
 ///
-/// The factory is a `Box<dyn Fn() -> BoxFuture>` so the supervisor can create
-/// a fresh task instance for each restart. A captured `Arc` lets the factory
-/// share state across restarts (e.g., the socket path, config, health table ref).
+/// La fábrica es un `Box<dyn Fn() -> BoxFuture>` para que el supervisor pueda crear
+/// una instancia nueva de tarea para cada reinicio. Un `Arc` capturado permite que la
+/// fábrica comparta estado entre reinicios (p. ej., la ruta del socket, la configuración,
+/// la referencia a la tabla de salud).
 type BoxFuture = Pin<Box<dyn Future<Output = Result<(), TaskError>> + Send>>;
 
 pub struct TaskSpec {
     pub name: String,
-    /// Creates a new instance of the task. Called on initial start and each restart.
+    /// Crea una nueva instancia de la tarea. Se llama en el inicio inicial y en cada reinicio.
     pub factory: Box<dyn Fn() -> BoxFuture + Send + Sync>,
-    /// How many times to restart before giving up.
+    /// Cuántas veces reiniciar antes de rendirse.
     pub max_restarts: u32,
-    /// Base delay for exponential backoff (milliseconds).
-    /// Delay = base * 2^attempt, capped at 30 seconds.
+    /// Retardo base para el retroceso exponencial (milisegundos).
+    /// Retardo = base * 2^intento, limitado a 30 segundos.
     pub restart_delay_base_ms: u64,
 }
 
 impl TaskSpec {
     pub fn restart_delay(&self, attempt: u32) -> Duration {
-        // Exponential backoff: 100ms, 200ms, 400ms, 800ms... capped at 30s.
+        // Retroceso exponencial: 100ms, 200ms, 400ms, 800ms... limitado a 30s.
         let ms = self.restart_delay_base_ms.saturating_mul(1u64 << attempt.min(8));
         Duration::from_millis(ms.min(30_000))
     }
@@ -117,42 +118,42 @@ impl TaskSpec {
 // Supervisor
 // ---------------------------------------------------------------------------
 
-/// Run all tasks, restarting on failure with exponential backoff.
+/// Ejecutar todas las tareas, reiniciando en caso de fallo con retroceso exponencial.
 ///
-/// Shutdown is coordinated via a `CancellationToken`: when cancelled, the supervisor
-/// stops restarting failed tasks and waits for running tasks to complete.
+/// El apagado se coordina mediante un `CancellationToken`: cuando se cancela, el supervisor
+/// deja de reiniciar las tareas fallidas y espera a que las tareas en ejecución terminen.
 pub async fn supervisor(tasks: Vec<TaskSpec>, health: SharedHealth, shutdown: CancellationToken) {
-    // Track per-task state: (JoinHandle, restart_count, name).
-    // We keep a Vec<Option<JoinHandle>> indexed the same as `tasks`.
+    // Rastrear el estado por tarea: (JoinHandle, restart_count, name).
+    // Mantenemos un Vec<Option<JoinHandle>> indexado igual que `tasks`.
     let mut handles: Vec<Option<JoinHandle<Result<(), TaskError>>>> =
         tasks.iter().map(|_| None).collect();
     let mut restart_counts: Vec<u32> = vec![0; tasks.len()];
     let mut failed: Vec<bool> = vec![false; tasks.len()];
 
-    // Initial spawn of all tasks.
+    // Lanzamiento inicial de todas las tareas.
     for (i, spec) in tasks.iter().enumerate() {
-        info!(task = %spec.name, "supervisor: initial spawn");
+        info!(task = %spec.name, "supervisor: lanzamiento inicial");
         handles[i] = Some(tokio::spawn((spec.factory)()));
     }
 
-    // Main supervisor loop.
+    // Bucle principal del supervisor.
     //
-    // `tokio::select!` on shutdown OR on any task completing.
-    // Because JoinHandle is not Clone, we poll them manually each iteration.
+    // `tokio::select!` sobre apagado O sobre cualquier tarea que termine.
+    // Dado que JoinHandle no es Clone, los sondeamos manualmente en cada iteración.
     loop {
-        // Check if shutdown was requested.
+        // Comprobar si se solicitó el apagado.
         if shutdown.is_cancelled() {
-            info!("supervisor: shutdown requested, stopping restart loop");
+            info!("supervisor: apagado solicitado, deteniendo bucle de reinicio");
             break;
         }
 
-        // Poll each handle to see if any task finished.
-        // We use a short sleep so this isn't a busy loop.
+        // Sondear cada handle para ver si alguna tarea terminó.
+        // Usamos un sleep corto para que no sea un bucle ocupado.
         sleep(Duration::from_millis(50)).await;
 
         for i in 0..tasks.len() {
             if failed[i] {
-                continue; // already gave up on this task
+                continue; // ya nos rendimos con esta tarea
             }
 
             let finished = if let Some(handle) = &handles[i] {
@@ -165,24 +166,24 @@ pub async fn supervisor(tasks: Vec<TaskSpec>, health: SharedHealth, shutdown: Ca
                 continue;
             }
 
-            // Task finished — collect result.
+            // La tarea terminó — recoger el resultado.
             let result = handles[i].take().unwrap().await;
             let spec = &tasks[i];
 
             match result {
                 Ok(Ok(())) => {
-                    // Clean exit. The task completed normally (unusual for a daemon).
-                    info!(task = %spec.name, "task exited cleanly");
-                    // Don't restart — it's done.
+                    // Salida limpia. La tarea terminó normalmente (inusual para un demonio).
+                    info!(task = %spec.name, "la tarea salió limpiamente");
+                    // No reiniciar — ha terminado.
                 }
                 Ok(Err(e)) => {
-                    // Task returned Err.
+                    // La tarea devolvió Err.
                     warn!(
                         task = %spec.name,
                         error = %e,
-                        restart_count = restart_counts[i],
+                        reinicio_count = restart_counts[i],
                         max = spec.max_restarts,
-                        "task failed"
+                        "la tarea falló"
                     );
                     handle_restart(
                         i,
@@ -196,11 +197,11 @@ pub async fn supervisor(tasks: Vec<TaskSpec>, health: SharedHealth, shutdown: Ca
                     .await;
                 }
                 Err(join_err) => {
-                    // Panic or cancellation inside the task.
+                    // Pánico o cancelación dentro de la tarea.
                     error!(
                         task = %spec.name,
                         error = %join_err,
-                        "task panicked or was cancelled"
+                        "la tarea entró en pánico o fue cancelada"
                     );
                     handle_restart(
                         i,
@@ -216,18 +217,18 @@ pub async fn supervisor(tasks: Vec<TaskSpec>, health: SharedHealth, shutdown: Ca
             }
         }
 
-        // If all tasks have either exited cleanly or permanently failed, we're done.
+        // Si todas las tareas han salido limpiamente o fallado permanentemente, hemos terminado.
         let all_done = handles.iter().all(|h| h.is_none());
         if all_done {
-            info!("supervisor: all tasks finished");
+            info!("supervisor: todas las tareas terminaron");
             break;
         }
     }
 
-    info!("supervisor: exiting");
+    info!("supervisor: saliendo");
 }
 
-/// Handle a single task failure: restart with backoff or mark as permanently failed.
+/// Manejar un único fallo de tarea: reiniciar con retroceso o marcar como fallado permanentemente.
 async fn handle_restart(
     idx: usize,
     spec: &TaskSpec,
@@ -246,14 +247,14 @@ async fn handle_restart(
     if count >= spec.max_restarts {
         error!(
             task = %spec.name,
-            attempts = count,
-            "max restarts exceeded — marking FAILED and giving up"
+            intentos = count,
+            "reinicios máximos excedidos — marcando como FALLADO y abandonando"
         );
         failed[idx] = true;
         health.write().await.set(
             &spec.name,
             HealthState::Failed {
-                reason: format!("crashed {} times, max_restarts={}", count, spec.max_restarts),
+                reason: format!("se cayó {} veces, max_restarts={}", count, spec.max_restarts),
             },
         );
         return;
@@ -262,16 +263,16 @@ async fn handle_restart(
     let delay = spec.restart_delay(count);
     warn!(
         task = %spec.name,
-        attempt = count + 1,
+        intento = count + 1,
         delay_ms = delay.as_millis(),
-        "restarting with backoff"
+        "reiniciando con retroceso"
     );
 
-    // Mark as Degraded during the restart window.
+    // Marcar como Degradado durante la ventana de reinicio.
     health.write().await.set(
         &spec.name,
         HealthState::Degraded {
-            reason: format!("restarting (attempt {})", count + 1),
+            reason: format!("reiniciando (intento {})", count + 1),
         },
     );
 
@@ -284,23 +285,23 @@ async fn handle_restart(
     restart_counts[idx] += 1;
     handles[idx] = Some(tokio::spawn((spec.factory)()));
 
-    // Mark as Nominal optimistically; task will update health if it fails again.
+    // Marcar como Nominal de forma optimista; la tarea actualizará la salud si falla de nuevo.
     health.write().await.set(&spec.name, HealthState::Nominal);
-    info!(task = %spec.name, "restarted");
+    info!(task = %spec.name, "reiniciada");
 }
 
 // ---------------------------------------------------------------------------
-// Demo tasks
+// Tareas de demostración
 // ---------------------------------------------------------------------------
 
 fn make_healthy_task() -> BoxFuture {
     Box::pin(async move {
-        info!("healthy_task: running forever");
+        info!("healthy_task: ejecutándose indefinidamente");
         loop {
             sleep(Duration::from_millis(500)).await;
             info!("healthy_task: tick");
         }
-        // This never returns, simulating a long-running daemon.
+        // Esto nunca retorna, simulando un demonio de larga ejecución.
         #[allow(unreachable_code)]
         Ok(())
     })
@@ -314,23 +315,23 @@ fn make_flaky_task(name: String, shared_counter: Arc<std::sync::Mutex<u32>>) -> 
             *c
         };
 
-        info!(name = %name, instance = count, "flaky_task starting");
+        info!(name = %name, instance = count, "flaky_task iniciando");
 
-        // Work normally for a bit, then fail.
+        // Trabajar normalmente un momento, luego fallar.
         sleep(Duration::from_millis(400)).await;
 
         if count <= 3 {
-            warn!(name = %name, instance = count, "flaky_task: simulated crash!");
+            warn!(name = %name, instance = count, "flaky_task: ¡caída simulada!");
             Err(TaskError::Transient(format!(
-                "random hardware error on instance {}",
+                "error de hardware aleatorio en instancia {}",
                 count
             )))
         } else {
-            // Eventually stabilises after enough restarts.
-            info!(name = %name, instance = count, "flaky_task: now stable, running forever");
+            // Finalmente se estabiliza tras suficientes reinicios.
+            info!(name = %name, instance = count, "flaky_task: ahora estable, ejecutándose indefinidamente");
             loop {
                 sleep(Duration::from_secs(1)).await;
-                info!(name = %name, instance = count, "flaky_task: tick (stable)");
+                info!(name = %name, instance = count, "flaky_task: tick (estable)");
             }
             #[allow(unreachable_code)]
             Ok(())
@@ -344,12 +345,12 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    info!("=== Day 5: Supervisor Demo ===");
+    info!("=== Día 5: Demo de Supervisor ===");
 
     let health: SharedHealth = Arc::new(RwLock::new(HealthTable::new()));
     let shutdown = CancellationToken::new();
 
-    // Shared counter to track restart instances across factory calls.
+    // Contador compartido para rastrear instancias de reinicio entre llamadas a la fábrica.
     let flaky_counter = Arc::new(std::sync::Mutex::new(0u32));
 
     let tasks = vec![
@@ -374,15 +375,15 @@ async fn main() {
     let shutdown_clone = shutdown.clone();
     let sup_handle = tokio::spawn(supervisor(tasks, health_clone, shutdown_clone));
 
-    // Let the supervisor run for 8 seconds, then shut down.
+    // Dejar correr el supervisor durante 8 segundos, luego apagar.
     sleep(Duration::from_secs(8)).await;
-    info!("main: requesting shutdown");
+    info!("main: solicitando apagado");
     shutdown.cancel();
     let _ = sup_handle.await;
 
-    // Print final health.
+    // Imprimir salud final.
     let ht = health.read().await;
-    info!("--- Final Health ---");
+    info!("--- Salud Final ---");
     for (id, state) in &ht.entries {
         info!(component = %id, state = %state);
     }

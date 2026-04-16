@@ -1,19 +1,19 @@
-// Day 1, Example 4: tokio::select! Macro
+// Día 1, Ejemplo 4: Macro tokio::select!
 //
-// select! races multiple async operations: whichever completes first wins,
-// and all others are DROPPED (cancelled). This is the async equivalent of
-// POSIX select() or poll(), but works with any future — not just file descriptors.
+// select! compite múltiples operaciones async: la que termina primero gana,
+// y todas las demás son DESCARTADAS (canceladas). Es el equivalente async de
+// POSIX select() o poll(), pero funciona con cualquier future — no solo descriptores de archivo.
 //
-// If you've written an embedded event loop like:
+// Si has escrito un bucle de eventos embedded como:
 //   while (1) {
 //     if (uart_data_ready()) handle_uart();
 //     if (timer_expired()) handle_timer();
 //     if (shutdown_requested()) break;
 //   }
 //
-// select! is the idiomatic async version of that pattern.
+// select! es la versión async idiomática de ese patrón.
 //
-// Run with:
+// Ejecutar con:
 //   cargo run --example 04_select_macro
 
 use std::time::Duration;
@@ -23,67 +23,67 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() {
-    println!("=== Example 04: select! Macro ===\n");
+    println!("=== Ejemplo 04: Macro select! ===\n");
 
     demo_basic_race().await;
     demo_timeout_pattern().await;
     demo_biased_select().await;
     demo_cancellation_safety().await;
 
-    println!("\nDone.");
+    println!("\nListo.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 1: Basic race between two operations
+// Parte 1: Carrera básica entre dos operaciones
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn demo_basic_race() {
-    println!("--- Part 1: Basic Race ---");
+    println!("--- Parte 1: Carrera Básica ---");
 
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<&str>(4);
     let token = CancellationToken::new();
     let task_token = token.clone();
 
-    // Simulate a command arriving after 30ms
+    // Simular un comando que llega tras 30ms
     let sender = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(30)).await;
         let _ = cmd_tx.send("TC_RESET").await;
     });
 
-    // This loop demonstrates the core pattern: do useful work until EITHER
-    // a command arrives OR a shutdown is requested.
+    // Este bucle demuestra el patrón central: hacer trabajo útil hasta que BIEN
+    // llegue un comando O se solicite un apagado.
     let worker = tokio::spawn(async move {
         let mut ticks = 0u32;
         loop {
             tokio::select! {
-                // Branch 1: a command arrived on the channel
-                // cmd_rx.recv() is "cancellation-safe" — if this branch loses the
-                // race, the message stays in the channel and will be received next time.
+                // Rama 1: llegó un comando en el canal
+                // cmd_rx.recv() es "cancellation-safe" — si esta rama pierde la
+                // carrera, el mensaje permanece en el canal y se recibirá la próxima vez.
                 cmd = cmd_rx.recv() => {
                     match cmd {
                         Some(c) => {
-                            println!("  Received command: {c}");
-                            break; // Exit loop on command
+                            println!("  Comando recibido: {c}");
+                            break; // Salir del bucle al recibir comando
                         }
                         None => {
-                            println!("  Command channel closed");
+                            println!("  Canal de comandos cerrado");
                             break;
                         }
                     }
                 }
 
-                // Branch 2: cancelled by external signal
+                // Rama 2: cancelado por señal externa
                 _ = task_token.cancelled() => {
-                    println!("  Task cancelled after {ticks} ticks");
+                    println!("  Tarea cancelada tras {ticks} ticks");
                     break;
                 }
 
-                // Branch 3: periodic 10ms work tick
+                // Rama 3: tick de trabajo periódico cada 10ms
                 _ = tokio::time::sleep(Duration::from_millis(10)) => {
                     ticks += 1;
-                    println!("  Work tick {ticks}");
-                    // Note: each iteration, a NEW sleep future is created, so
-                    // the timer resets on every loop iteration — this is intentional.
+                    println!("  Tick de trabajo {ticks}");
+                    // Nota: en cada iteración se crea un NUEVO future sleep, así que
+                    // el temporizador se reinicia en cada iteración del bucle — esto es intencional.
                 }
             }
         }
@@ -95,62 +95,62 @@ async fn demo_basic_race() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 2: Timeout Pattern
+// Parte 2: Patrón de Timeout
 //
-// Common requirement: "wait for a response, but don't wait forever."
-// In embedded UART code you'd set a timer and check it in your polling loop.
-// tokio::time::timeout() wraps any future with a deadline.
+// Requisito común: "esperar una respuesta, pero no esperar para siempre."
+// En código UART embedded establecerías un temporizador y lo comprobarías en tu bucle de sondeo.
+// tokio::time::timeout() envuelve cualquier future con un plazo límite.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn demo_timeout_pattern() {
-    println!("--- Part 2: Timeout Pattern ---");
+    println!("--- Parte 2: Patrón de Timeout ---");
 
-    // Simulate a slow sensor that takes 200ms to respond
+    // Simular un sensor lento que tarda 200ms en responder
     async fn slow_sensor_read() -> f32 {
         tokio::time::sleep(Duration::from_millis(200)).await;
         42.0
     }
 
-    // Simulate a fast sensor that responds quickly
+    // Simular un sensor rápido que responde enseguida
     async fn fast_sensor_read() -> f32 {
         tokio::time::sleep(Duration::from_millis(10)).await;
         37.5
     }
 
-    // timeout() races the future against a deadline.
-    // Returns Ok(value) if the future completes in time.
-    // Returns Err(Elapsed) if the deadline hits first.
+    // timeout() compite el future contra un plazo.
+    // Retorna Ok(valor) si el future termina a tiempo.
+    // Retorna Err(Elapsed) si el plazo se alcanza primero.
     let deadline = Duration::from_millis(50);
 
     match timeout(deadline, slow_sensor_read()).await {
-        Ok(val) => println!("  Slow sensor responded: {val}°C"),
+        Ok(val) => println!("  Sensor lento respondió: {val}°C"),
         Err(_elapsed) => {
-            println!("  Slow sensor timed out after {deadline:?} — using stale value or default");
+            println!("  Sensor lento superó el timeout tras {deadline:?} — usando valor obsoleto o por defecto");
         }
     }
 
     match timeout(deadline, fast_sensor_read()).await {
-        Ok(val) => println!("  Fast sensor responded: {val}°C"),
-        Err(_elapsed) => println!("  Fast sensor timed out (unexpected)"),
+        Ok(val) => println!("  Sensor rápido respondió: {val}°C"),
+        Err(_elapsed) => println!("  Sensor rápido superó el timeout (inesperado)"),
     }
 
-    // Pattern: retry with timeout, N attempts
+    // Patrón: reintento con timeout, N intentos
     let result = try_with_retries(3, Duration::from_millis(30)).await;
-    println!("  After retries: {:?}", result);
+    println!("  Tras reintentos: {:?}", result);
     println!();
 }
 
-// Retry helper: try N times, each with its own timeout.
-// After each failure, wait a bit before retrying.
+// Helper de reintentos: intenta N veces, cada una con su propio timeout.
+// Tras cada fallo, espera un poco antes de reintentar.
 async fn try_with_retries(attempts: u32, per_attempt_timeout: Duration) -> Result<f32, &'static str> {
-    // Simulates a flaky sensor: fails first two times, succeeds on third
+    // Simula un sensor inestable: falla las primeras dos veces, tiene éxito en la tercera
     static CALL_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
     for attempt in 1..=attempts {
         let count = CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         let future = async move {
-            // First 2 calls are slow (timeout), third is fast
+            // Las primeras 2 llamadas son lentas (timeout), la tercera es rápida
             if count < 2 {
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 99.0f32
@@ -162,110 +162,110 @@ async fn try_with_retries(attempts: u32, per_attempt_timeout: Duration) -> Resul
 
         match timeout(per_attempt_timeout, future).await {
             Ok(val) => {
-                println!("  Attempt {attempt}: success ({val:.1})");
+                println!("  Intento {attempt}: éxito ({val:.1})");
                 return Ok(val);
             }
             Err(_) => {
-                println!("  Attempt {attempt}: timed out");
+                println!("  Intento {attempt}: timeout");
                 if attempt < attempts {
-                    tokio::time::sleep(Duration::from_millis(5)).await; // back-off
+                    tokio::time::sleep(Duration::from_millis(5)).await; // espera progresiva
                 }
             }
         }
     }
 
-    Err("All attempts timed out")
+    Err("Todos los intentos superaron el timeout")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 3: Biased Select for Priority
+// Parte 3: Select Sesgado para Prioridad
 //
-// By default, when multiple branches are ready simultaneously, select! picks
-// one at random. This is fair, but sometimes you need priority:
-// "always process shutdown commands before regular work."
+// Por defecto, cuando múltiples ramas están listas simultáneamente, select! elige
+// una al azar. Esto es justo, pero a veces necesitas prioridad:
+// "siempre procesar comandos de apagado antes que trabajo regular."
 //
-// The `biased` keyword makes select! check branches top-to-bottom.
-// If the first branch is ready, it always wins regardless of others.
+// La palabra clave `biased` hace que select! compruebe las ramas de arriba a abajo.
+// Si la primera rama está lista, siempre gana independientemente de las demás.
 //
-// Real use case: housekeeping telemetry vs telecommand processing.
-// In space systems, TCs have priority over HK — biased select expresses this.
+// Caso de uso real: telemetría de mantenimiento vs procesamiento de telecomandos.
+// En sistemas espaciales, los TC tienen prioridad sobre HK — el select sesgado expresa esto.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn demo_biased_select() {
-    println!("--- Part 3: Biased Select (Priority) ---");
+    println!("--- Parte 3: Select Sesgado (Prioridad) ---");
 
-    let (tc_tx, mut tc_rx) = mpsc::channel::<&str>(8); // High-priority telecommands
-    let (hk_tx, mut hk_rx) = mpsc::channel::<&str>(8); // Low-priority housekeeping
+    let (tc_tx, mut tc_rx) = mpsc::channel::<&str>(8); // Telecomandos de alta prioridad
+    let (hk_tx, mut hk_rx) = mpsc::channel::<&str>(8); // Mantenimiento de baja prioridad
 
-    // Flood both channels with messages
+    // Saturar ambos canales con mensajes
     for i in 0..3 {
         tc_tx.send(format!("TC-{i}").leak()).await.unwrap();
         hk_tx.send(format!("HK-{i}").leak()).await.unwrap();
     }
 
-    // Process for a few iterations, showing TC gets priority
+    // Procesar durante varias iteraciones, mostrando que TC obtiene prioridad
     for _ in 0..6 {
         tokio::select! {
-            // `biased` makes this deterministic: branches checked top-to-bottom.
-            // The TC branch is checked FIRST. If a TC is waiting AND an HK is
-            // waiting, the TC always wins. Only when TC queue is empty does
-            // HK get processed.
+            // `biased` hace esto determinista: ramas comprobadas de arriba a abajo.
+            // La rama TC se comprueba PRIMERO. Si hay un TC esperando Y un HK esperando,
+            // el TC siempre gana. Solo cuando la cola TC está vacía se procesa HK.
             biased;
 
-            // Priority 1: Process telecommand
+            // Prioridad 1: Procesar telecomando
             tc = tc_rx.recv() => {
                 if let Some(cmd) = tc {
-                    println!("  [HIGH PRIORITY] Processed TC: {cmd}");
+                    println!("  [PRIORIDAD ALTA] TC procesado: {cmd}");
                 } else {
                     break;
                 }
             }
 
-            // Priority 2: Process housekeeping (only when no TC pending)
+            // Prioridad 2: Procesar mantenimiento (solo cuando no hay TC pendiente)
             hk = hk_rx.recv() => {
                 if let Some(pkt) = hk {
-                    println!("  [LOW PRIORITY]  Processed HK: {pkt}");
+                    println!("  [PRIORIDAD BAJA]  HK procesado: {pkt}");
                 } else {
                     break;
                 }
             }
 
-            // Always check shutdown (but lower priority than TC)
+            // Comprobar siempre el apagado (pero menor prioridad que TC)
             else => break,
         }
     }
 
-    println!("  Notice: all TCs processed before any HK (biased ordering)\n");
+    println!("  Observa: todos los TC procesados antes de cualquier HK (orden sesgado)\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 4: Cancellation Safety
+// Parte 4: Seguridad de Cancelación
 //
-// When a branch loses the race in select!, the future in that branch is
-// DROPPED — which means the async operation is cancelled mid-flight.
+// Cuando una rama pierde la carrera en select!, el future en esa rama es
+// DESCARTADO — lo que significa que la operación async es cancelada a mitad.
 //
-// This is only safe if the future is "cancellation-safe":
-// it doesn't leave any external resource in an inconsistent state when dropped.
+// Esto solo es seguro si el future es "cancellation-safe":
+// no deja ningún recurso externo en un estado inconsistente al ser descartado.
 //
-// Safe in select!:
-// - channel recv() (message stays in channel)
+// Seguro en select!:
+// - channel recv() (el mensaje permanece en el canal)
 // - CancellationToken::cancelled()
 // - tokio::time::sleep()
 //
-// NOT safe in select! without care:
-// - Writing to a file (may be partially written)
-// - A multi-step protocol where you've sent but not yet received acknowledgment
+// NO seguro en select! sin cuidado:
+// - Escritura en un archivo (puede quedar parcialmente escrito)
+// - Un protocolo multi-paso donde has enviado pero aún no recibido el reconocimiento
 //
-// The fix for unsafe futures: use a flag or wrapper that completes atomically.
+// La solución para futures inseguros: usa un flag o wrapper que se complete atómicamente,
+// o usa tokio::task::spawn() para la parte insegura y haz join del handle.
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn demo_cancellation_safety() {
-    println!("--- Part 4: Cancellation Safety ---");
+    println!("--- Parte 4: Seguridad de Cancelación ---");
 
     let (tx, mut rx) = mpsc::channel::<u32>(4);
 
-    // Demonstrate that recv() is safe: if the branch is cancelled mid-wait,
-    // the message is NOT lost — it stays in the channel for next time.
+    // Demostrar que recv() es seguro: si la rama es cancelada mientras espera,
+    // el mensaje NO se pierde — permanece en el canal para la próxima vez.
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(50)).await;
         tx.send(42).await.unwrap();
@@ -274,34 +274,34 @@ async fn demo_cancellation_safety() {
     let mut received = false;
     let mut iterations = 0;
 
-    // Run a select loop where the timer fires first for several iterations,
-    // then eventually the channel message arrives. Because recv() is
-    // cancellation-safe, the message is preserved across iterations.
+    // Ejecutar un bucle select donde el temporizador dispara primero varias iteraciones,
+    // y eventualmente llega el mensaje del canal. Porque recv() es
+    // cancellation-safe, el mensaje se preserva entre iteraciones.
     while !received && iterations < 20 {
         tokio::select! {
             val = rx.recv() => {
-                println!("  Message received: {:?}", val);
+                println!("  Mensaje recibido: {:?}", val);
                 received = true;
             }
             _ = tokio::time::sleep(Duration::from_millis(10)) => {
-                // The recv() future was dropped (cancelled) here each iteration.
-                // But the message is still waiting in the channel buffer.
+                // El future recv() fue descartado (cancelado) aquí cada iteración.
+                // Pero el mensaje sigue esperando en el buffer del canal.
                 iterations += 1;
-                println!("  Timer fired (iter {iterations}), recv future cancelled, message preserved");
+                println!("  Temporizador disparó (iter {iterations}), future recv cancelado, mensaje preservado");
             }
         }
     }
 
-    // Example of what NOT to do: unsafe future in select!
-    // Conceptually (not run here — just a code comment):
+    // Ejemplo de lo que NO hacer: future inseguro en select!
+    // Conceptualmente (no ejecutado aquí — solo un comentario de código):
     //
     //   select! {
-    //       _ = write_config_to_flash() => {}  // DANGEROUS: may be partially written
-    //       _ = shutdown_signal() => {}         // if this wins, flash write is cancelled!
+    //       _ = write_config_to_flash() => {}  // PELIGROSO: puede quedar parcialmente escrito
+    //       _ = shutdown_signal() => {}         // si esto gana, la escritura a flash se cancela!
     //   }
     //
-    // The fix: wrap the operation so it either completes fully or not at all,
-    // or use tokio::task::spawn() for the unsafe part and join the handle.
+    // La solución: envolver la operación para que se complete totalmente o no comience,
+    // o usar tokio::task::spawn() para la parte insegura y hacer join del handle.
 
-    println!("  (Cancellation safety demonstration complete)\n");
+    println!("  (Demostración de seguridad de cancelación completa)\n");
 }

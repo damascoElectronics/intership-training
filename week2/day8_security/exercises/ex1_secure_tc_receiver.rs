@@ -1,9 +1,9 @@
-//! Exercise 1 — Implement a secure TC receiver
+//! Ejercicio 1 — Implementar un receptor TC seguro
 //!
-//! Wire together HMAC verification + replay protection into a complete
-//! TC receiver function.
+//! Conectar la verificación HMAC + la protección de repetición en una función
+//! completa de receptor TC.
 //!
-//! Run tests:  cargo test --example ex1_secure_tc_receiver
+//! Ejecutar las pruebas:  cargo test --example ex1_secure_tc_receiver
 
 #![allow(dead_code, unused_variables)]
 
@@ -13,21 +13,21 @@ use subtle::ConstantTimeEq;
 
 type HmacSha256 = Hmac<Sha256>;
 
-// ─── Pre-written types ────────────────────────────────────────────────────────
+// ─── Tipos preaparados ────────────────────────────────────────────────────────
 
 pub const TEST_KEY: &[u8] = b"test-key-for-training-only";
 
-/// A raw TC packet with an appended 32-byte HMAC.
+/// Un paquete TC crudo con un HMAC de 32 bytes adjunto.
 #[derive(Debug, Clone)]
 pub struct RawTcWithHmac {
-    /// The packet bytes (everything except the HMAC).
+    /// Los bytes del paquete (todo excepto el HMAC).
     pub payload: Vec<u8>,
-    /// 32-byte HMAC-SHA256 over `payload`.
+    /// HMAC-SHA256 de 32 bytes sobre `payload`.
     pub mac: [u8; 32],
 }
 
 impl RawTcWithHmac {
-    /// Creates a valid signed packet.
+    /// Crea un paquete firmado válido.
     pub fn new_signed(apid: u16, seq: u16, service: u8, subservice: u8, key: &[u8]) -> Self {
         let mut payload = Vec::new();
         payload.extend_from_slice(&apid.to_be_bytes());
@@ -45,7 +45,7 @@ impl RawTcWithHmac {
     }
 }
 
-/// A verified, authenticated TC (output of the receiver).
+/// Un TC verificado y autenticado (salida del receptor).
 #[derive(Debug, Clone)]
 pub struct VerifiedTc {
     pub apid: u16,
@@ -61,26 +61,26 @@ pub enum RejectionReason {
     TooOld,
 }
 
-// ─── Your implementation ─────────────────────────────────────────────────────
+// ─── Tu implementación ───────────────────────────────────────────────────────
 
-/// Processes a stream of raw TC packets and returns only those that pass
-/// HMAC verification and replay protection.
+/// Procesa un flujo de paquetes TC crudos y devuelve solo los que pasan
+/// la verificación HMAC y la protección de repetición.
 ///
-/// Returns a list of (result: Ok/Err) in order, one per input packet.
+/// Devuelve una lista de (resultado: Ok/Err) en orden, uno por paquete de entrada.
 pub fn process_tc_stream(
     packets: &[RawTcWithHmac],
     key: &[u8],
 ) -> Vec<Result<VerifiedTc, RejectionReason>> {
     todo!(
-        "For each packet:
-         1. Verify HMAC (use HmacSha256::new_from_slice + update + verify constant-time)
-         2. Check replay window (implement a simple seen-set or sliding window)
-         3. If both pass: return Ok(VerifiedTc { ... })
-         4. Otherwise: return Err(RejectionReason::BadHmac | Replay | TooOld)"
+        "Para cada paquete:
+         1. Verificar HMAC (usar HmacSha256::new_from_slice + update + verificar en tiempo constante)
+         2. Comprobar ventana de repetición (implementar un conjunto visto simple o ventana deslizante)
+         3. Si ambos pasan: devolver Ok(VerifiedTc { ... })
+         4. De lo contrario: devolver Err(RejectionReason::BadHmac | Replay | TooOld)"
     )
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// ─── Pruebas ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -88,15 +88,15 @@ mod tests {
 
     fn make_stream() -> Vec<RawTcWithHmac> {
         vec![
-            RawTcWithHmac::new_signed(0x001, 0, 17, 1, TEST_KEY),  // valid
-            RawTcWithHmac::new_signed(0x001, 1, 17, 1, TEST_KEY),  // valid
-            // bad HMAC: corrupt the MAC
+            RawTcWithHmac::new_signed(0x001, 0, 17, 1, TEST_KEY),  // válido
+            RawTcWithHmac::new_signed(0x001, 1, 17, 1, TEST_KEY),  // válido
+            // HMAC incorrecto: corromper el MAC
             { let mut p = RawTcWithHmac::new_signed(0x001, 2, 3, 129, TEST_KEY); p.mac[0] ^= 0xFF; p },
-            RawTcWithHmac::new_signed(0x001, 3, 3, 129, TEST_KEY), // valid
-            // replay: same seq as second packet
-            RawTcWithHmac::new_signed(0x001, 1, 17, 1, TEST_KEY),  // replay
-            RawTcWithHmac::new_signed(0x001, 4, 17, 1, TEST_KEY),  // valid
-            RawTcWithHmac::new_signed(0x001, 5, 17, 1, TEST_KEY),  // valid
+            RawTcWithHmac::new_signed(0x001, 3, 3, 129, TEST_KEY), // válido
+            // repetición: mismo seq que el segundo paquete
+            RawTcWithHmac::new_signed(0x001, 1, 17, 1, TEST_KEY),  // repetición
+            RawTcWithHmac::new_signed(0x001, 4, 17, 1, TEST_KEY),  // válido
+            RawTcWithHmac::new_signed(0x001, 5, 17, 1, TEST_KEY),  // válido
         ]
     }
 
@@ -109,14 +109,14 @@ mod tests {
         let accepted: Vec<_> = results.iter().filter(|r| r.is_ok()).collect();
         let rejected: Vec<_> = results.iter().filter(|r| r.is_err()).collect();
 
-        assert_eq!(accepted.len(), 5, "should accept 5 valid TCs");
-        assert_eq!(rejected.len(), 2, "should reject 2 (bad HMAC + replay)");
+        assert_eq!(accepted.len(), 5, "se deben aceptar 5 TCs válidos");
+        assert_eq!(rejected.len(), 2, "se deben rechazar 2 (HMAC incorrecto + repetición)");
     }
 
     #[test]
     fn bad_hmac_rejected() {
         let mut pkt = RawTcWithHmac::new_signed(0x001, 0, 17, 1, TEST_KEY);
-        pkt.mac = [0u8; 32]; // wrong MAC
+        pkt.mac = [0u8; 32]; // MAC incorrecto
         let results = process_tc_stream(&[pkt], TEST_KEY);
         assert_eq!(results[0], Err(RejectionReason::BadHmac));
     }
@@ -133,5 +133,5 @@ mod tests {
 }
 
 fn main() {
-    println!("Run tests with: cargo test --example ex1_secure_tc_receiver");
+    println!("Ejecutar las pruebas con: cargo test --example ex1_secure_tc_receiver");
 }

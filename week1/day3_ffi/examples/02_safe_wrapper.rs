@@ -1,18 +1,18 @@
-/// Example 02 — Building a safe Rust API around C functions
+/// Ejemplo 02 — Construir una API Rust segura alrededor de funciones C
 ///
-/// The previous example showed the raw FFI layer. This example shows the critical
-/// next step: wrapping the unsafe FFI calls in a safe public API.
+/// El ejemplo anterior mostró la capa FFI cruda. Este ejemplo muestra el
+/// siguiente paso crítico: envolver las llamadas FFI inseguras en una API pública segura.
 ///
-/// The pattern:
-///   1. Keep the `extern "C"` declarations private (module-private or crate-private)
-///   2. Build a Rust struct/impl that validates all inputs BEFORE calling C
-///   3. Map C error codes to a Rust `Result` type
-///   4. After this wrapper, all callers write 100% safe Rust
+/// El patrón:
+///   1. Mantener las declaraciones `extern "C"` privadas (privadas al módulo o al crate)
+///   2. Construir una struct/impl Rust que valide todas las entradas ANTES de llamar a C
+///   3. Mapear códigos de error C a un tipo `Result` de Rust
+///   4. Después de esta envoltura, todos los llamadores escriben 100% Rust seguro
 ///
-/// Why this matters: the entire rest of your codebase doesn't need to know
-/// about C, unsafe, or CCSDS bit manipulation. Only this module does.
+/// Por qué importa: el resto de tu base de código no necesita saber
+/// sobre C, unsafe o la manipulación de bits CCSDS. Solo este módulo lo sabe.
 
-// We declare the low-level bindings privately — callers use CcsdsHeader, not these.
+// Declaramos los bindings de bajo nivel de forma privada — los llamadores usan CcsdsHeader, no estos.
 #[repr(C)]
 struct CcsdsPrimaryHeaderRaw {
     raw: [u8; 6],
@@ -38,20 +38,20 @@ extern "C" {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Error type: represent every way the API can fail as a Rust enum.
+// Tipo de error: representar cada forma en que la API puede fallar como una enumeración Rust.
 //
-// Using an enum (rather than string messages or i32 codes) means callers can
-// pattern-match on the exact error and handle it programmatically.
+// Usar una enumeración (en lugar de mensajes de cadena o códigos i32) significa que los llamadores pueden
+// hacer pattern-matching en el error exacto y manejarlo programáticamente.
 // ──────────────────────────────────────────────────────────────────────────────
 #[derive(Debug, PartialEq)]
 pub enum CcsdsError {
-    /// APID must be 0–2047 (11 bits).
+    /// APID debe ser 0–2047 (11 bits).
     ApidOutOfRange { provided: u16 },
-    /// Sequence count must be 0–16383 (14 bits).
+    /// El conteo de secuencia debe ser 0–16383 (14 bits).
     SeqCountOutOfRange { provided: u16 },
-    /// data_len must be ≥ 1 (CCSDS stores data_len-1; zero is invalid).
+    /// data_len debe ser ≥ 1 (CCSDS almacena data_len-1; cero es inválido).
     DataLenZero,
-    /// The underlying C function returned an unexpected error code.
+    /// La función C subyacente devolvió un código de error inesperado.
     CFunctionFailed { code: i32 },
 }
 
@@ -59,47 +59,47 @@ impl std::fmt::Display for CcsdsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CcsdsError::ApidOutOfRange { provided } => {
-                write!(f, "APID 0x{:03X} is out of range (max 0x7FF = 2047)", provided)
+                write!(f, "APID 0x{:03X} está fuera de rango (máx 0x7FF = 2047)", provided)
             }
             CcsdsError::SeqCountOutOfRange { provided } => {
                 write!(
                     f,
-                    "seq_count {} is out of range (max 16383 = 0x3FFF)",
+                    "seq_count {} está fuera de rango (máx 16383 = 0x3FFF)",
                     provided
                 )
             }
-            CcsdsError::DataLenZero => write!(f, "data_len must be ≥ 1"),
+            CcsdsError::DataLenZero => write!(f, "data_len debe ser ≥ 1"),
             CcsdsError::CFunctionFailed { code } => {
-                write!(f, "C function returned error code {}", code)
+                write!(f, "La función C devolvió el código de error {}", code)
             }
         }
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// The public safe API
+// La API pública segura
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// A validated CCSDS primary header.
+/// Una cabecera primaria CCSDS validada.
 ///
-/// Invariants (maintained by the constructors):
+/// Invariantes (mantenidas por los constructores):
 ///   - apid ≤ 2047
 ///   - seq_count ≤ 16383
 ///   - data_len ≥ 1
-///   - `inner.raw` contains the correct byte encoding
+///   - `inner.raw` contiene la codificación correcta de bytes
 ///
-/// Once constructed, all these invariants hold and callers don't need unsafe.
+/// Una vez construida, todas estas invariantes se mantienen y los llamadores no necesitan unsafe.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CcsdsHeader {
-    // We store the raw bytes (as produced by C) rather than the decoded fields.
-    // This means `as_bytes()` is a zero-copy view into the already-encoded header.
+    // Almacenamos los bytes crudos (tal como los produce C) en lugar de los campos decodificados.
+    // Esto significa que `as_bytes()` es una vista de copia cero en la cabecera ya codificada.
     inner: [u8; 6],
 }
 
 impl CcsdsHeader {
     // ──────────────────────────────────────────────────────────────────────────
-    // Private helper: calls C and converts its error code to our error type.
-    // This is the ONLY place unsafe appears in the entire public API.
+    // Auxiliar privado: llama a C y convierte su código de error a nuestro tipo de error.
+    // Este es el ÚNICO lugar donde aparece unsafe en toda la API pública.
     // ──────────────────────────────────────────────────────────────────────────
     fn pack_validated(
         apid: u16,
@@ -107,8 +107,8 @@ impl CcsdsHeader {
         data_len: u16,
         is_tc: bool,
     ) -> Result<[u8; 6], CcsdsError> {
-        // Validate BEFORE calling C. We own these checks; C also checks them,
-        // but we want precise Rust error variants, not just "C returned -1".
+        // Validar ANTES de llamar a C. Nosotros somos responsables de estas verificaciones; C también las hace,
+        // pero queremos variantes de error Rust precisas, no simplemente "C devolvió -1".
         if apid > 0x07FF {
             return Err(CcsdsError::ApidOutOfRange { provided: apid });
         }
@@ -121,10 +121,10 @@ impl CcsdsHeader {
 
         let mut raw_hdr = CcsdsPrimaryHeaderRaw { raw: [0u8; 6] };
 
-        // Safety invariants we assert here:
-        //   1. raw_hdr is a valid, aligned, locally-owned CcsdsPrimaryHeaderRaw.
-        //   2. We just validated all input arguments, so C's preconditions are met.
-        //   3. C will not store the pointer past this call.
+        // Invariantes de seguridad que afirmamos aquí:
+        //   1. raw_hdr es un CcsdsPrimaryHeaderRaw válido, alineado y de propiedad local.
+        //   2. Acabamos de validar todos los argumentos de entrada, por lo que las precondiciones de C se cumplen.
+        //   3. C no almacenará el puntero más allá de esta llamada.
         let ret = unsafe {
             ccsds_pack(
                 &mut raw_hdr as *mut CcsdsPrimaryHeaderRaw,
@@ -136,50 +136,50 @@ impl CcsdsHeader {
         };
 
         if ret != 0 {
-            // This shouldn't happen since we pre-validated, but handle it anyway.
+            // Esto no debería ocurrir ya que pre-validamos, pero lo manejamos de todas formas.
             return Err(CcsdsError::CFunctionFailed { code: ret });
         }
 
         Ok(raw_hdr.raw)
     }
 
-    /// Create a new Telecommand (TC) header.
+    /// Crea una nueva cabecera de Telecomando (TC).
     ///
-    /// Returns `Err` if any field is out of range.
+    /// Devuelve `Err` si algún campo está fuera de rango.
     ///
-    /// CCSDS field constraints:
+    /// Restricciones de campos CCSDS:
     ///   - `apid`: 0–2047 (11 bits)
     ///   - `seq_count`: 0–16383 (14 bits)
-    ///   - `data_len`: ≥ 1 (stored as `data_len - 1` per CCSDS spec)
+    ///   - `data_len`: ≥ 1 (almacenado como `data_len - 1` según la especificación CCSDS)
     pub fn new_tc(apid: u16, seq_count: u16, data_len: u16) -> Result<Self, CcsdsError> {
         let bytes = Self::pack_validated(apid, seq_count, data_len, true)?;
         Ok(CcsdsHeader { inner: bytes })
     }
 
-    /// Create a new Telemetry (TM) header.
+    /// Crea una nueva cabecera de Telemetría (TM).
     pub fn new_tm(apid: u16, seq_count: u16, data_len: u16) -> Result<Self, CcsdsError> {
         let bytes = Self::pack_validated(apid, seq_count, data_len, false)?;
         Ok(CcsdsHeader { inner: bytes })
     }
 
-    /// Decode an existing raw 6-byte CCSDS header.
+    /// Decodifica una cabecera CCSDS cruda existente de 6 bytes.
     ///
-    /// This is useful when you received bytes over a serial link and want
-    /// a structured view.
+    /// Útil cuando recibiste bytes a través de un enlace serie y quieres
+    /// una vista estructurada.
     pub fn from_bytes(raw: [u8; 6]) -> Self {
-        // We trust the bytes as-is. If they came from the wire, they may or may not
-        // be valid CCSDS — the caller's responsibility. We just provide the decode API.
+        // Confiamos en los bytes tal como están. Si vinieron del cable, pueden o no
+        // ser CCSDS válido — es responsabilidad del llamador. Solo proporcionamos la API de decodificación.
         CcsdsHeader { inner: raw }
     }
 
-    /// The raw 6-byte header for transmission.
+    /// Los 6 bytes crudos de la cabecera para transmisión.
     pub fn as_bytes(&self) -> &[u8; 6] {
         &self.inner
     }
 
-    /// The Application Process Identifier (11 bits, 0–2047).
+    /// El Identificador de Proceso de Aplicación (11 bits, 0–2047).
     pub fn apid(&self) -> u16 {
-        // Safety: self.inner is always a valid 6-byte buffer.
+        // Safety: self.inner es siempre un buffer de 6 bytes válido.
         let mut apid: u16 = 0;
         let raw = CcsdsPrimaryHeaderRaw { raw: self.inner };
         unsafe {
@@ -188,53 +188,53 @@ impl CcsdsHeader {
         apid
     }
 
-    /// The sequence count (14 bits, 0–16383).
+    /// El conteo de secuencia (14 bits, 0–16383).
     pub fn seq_count(&self) -> u16 {
         let mut seq: u16 = 0;
         let raw = CcsdsPrimaryHeaderRaw { raw: self.inner };
-        // Safety: raw is a valid local copy of our 6-byte buffer.
+        // Safety: raw es una copia local válida de nuestro buffer de 6 bytes.
         unsafe {
             ccsds_unpack(&raw, std::ptr::null_mut(), &mut seq, std::ptr::null_mut());
         }
         seq
     }
 
-    /// The data field length in bytes (always ≥ 1).
+    /// La longitud del campo de datos en bytes (siempre ≥ 1).
     ///
-    /// This is the *actual* byte count of the data field, not the stored value
-    /// (which is `data_len - 1` per CCSDS). The wrapper handles this adjustment.
+    /// Este es el recuento de bytes *real* del campo de datos, no el valor almacenado
+    /// (que es `data_len - 1` según CCSDS). La envoltura maneja este ajuste.
     pub fn data_len(&self) -> u16 {
         let mut len: u16 = 0;
         let raw = CcsdsPrimaryHeaderRaw { raw: self.inner };
-        // Safety: raw is a valid local copy.
+        // Safety: raw es una copia local válida.
         unsafe {
             ccsds_unpack(&raw, std::ptr::null_mut(), std::ptr::null_mut(), &mut len);
         }
         len
     }
 
-    /// Returns `true` if this is a Telecommand (TC) packet.
+    /// Devuelve `true` si este es un paquete de Telecomando (TC).
     pub fn is_tc(&self) -> bool {
         let raw = CcsdsPrimaryHeaderRaw { raw: self.inner };
-        // Safety: raw is a valid local copy.
+        // Safety: raw es una copia local válida.
         let result = unsafe { ccsds_is_tc(&raw) };
         result != 0
     }
 
-    /// Returns `true` if this is a Telemetry (TM) packet.
+    /// Devuelve `true` si este es un paquete de Telemetría (TM).
     pub fn is_tm(&self) -> bool {
         !self.is_tc()
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Display implementation for human-readable output
+// Implementación de Display para salida legible por humanos
 // ──────────────────────────────────────────────────────────────────────────────
 impl std::fmt::Display for CcsdsHeader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "CcsdsHeader {{ type: {}, apid: 0x{:03X}, seq: {}, data_len: {}, bytes: {:02X?} }}",
+            "CcsdsHeader {{ tipo: {}, apid: 0x{:03X}, seq: {}, data_len: {}, bytes: {:02X?} }}",
             if self.is_tc() { "TC" } else { "TM" },
             self.apid(),
             self.seq_count(),
@@ -245,21 +245,21 @@ impl std::fmt::Display for CcsdsHeader {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Unit tests
+// Pruebas unitarias
 //
-// These live in the same file for this example. In a real codebase they'd live
-// in a `#[cfg(test)] mod tests { ... }` block or a separate test file.
+// Viven en el mismo archivo para este ejemplo. En una base de código real vivirían
+// en un bloque `#[cfg(test)] mod tests { ... }` o en un archivo de prueba separado.
 //
-// Run with: cargo test --example 02_safe_wrapper
+// Ejecutar con: cargo test --example 02_safe_wrapper
 // ──────────────────────────────────────────────────────────────────────────────
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Round-trip: pack a TC header, then read the fields back.
+    /// Ida y vuelta: empaquetar una cabecera TC, luego leer los campos de vuelta.
     #[test]
     fn tc_round_trip() {
-        let hdr = CcsdsHeader::new_tc(0x100, 7, 12).expect("new_tc should succeed");
+        let hdr = CcsdsHeader::new_tc(0x100, 7, 12).expect("new_tc debe tener éxito");
         assert_eq!(hdr.apid(), 0x100);
         assert_eq!(hdr.seq_count(), 7);
         assert_eq!(hdr.data_len(), 12);
@@ -267,10 +267,10 @@ mod tests {
         assert!(!hdr.is_tm());
     }
 
-    /// Round-trip: pack a TM header, then read the fields back.
+    /// Ida y vuelta: empaquetar una cabecera TM, luego leer los campos de vuelta.
     #[test]
     fn tm_round_trip() {
-        let hdr = CcsdsHeader::new_tm(0x050, 1023, 64).expect("new_tm should succeed");
+        let hdr = CcsdsHeader::new_tm(0x050, 1023, 64).expect("new_tm debe tener éxito");
         assert_eq!(hdr.apid(), 0x050);
         assert_eq!(hdr.seq_count(), 1023);
         assert_eq!(hdr.data_len(), 64);
@@ -278,48 +278,48 @@ mod tests {
         assert!(!hdr.is_tc());
     }
 
-    /// Edge case: maximum valid field values.
+    /// Caso límite: valores de campo máximos válidos.
     #[test]
     fn max_valid_fields() {
-        let hdr = CcsdsHeader::new_tm(0x7FF, 0x3FFF, 0xFFFF).expect("max valid fields");
+        let hdr = CcsdsHeader::new_tm(0x7FF, 0x3FFF, 0xFFFF).expect("campos máximos válidos");
         assert_eq!(hdr.apid(), 0x7FF);
         assert_eq!(hdr.seq_count(), 0x3FFF);
         assert_eq!(hdr.data_len(), 0xFFFF);
     }
 
-    /// Edge case: minimum valid field values.
+    /// Caso límite: valores de campo mínimos válidos.
     #[test]
     fn min_valid_fields() {
-        let hdr = CcsdsHeader::new_tc(0, 0, 1).expect("min valid fields");
+        let hdr = CcsdsHeader::new_tc(0, 0, 1).expect("campos mínimos válidos");
         assert_eq!(hdr.apid(), 0);
         assert_eq!(hdr.seq_count(), 0);
         assert_eq!(hdr.data_len(), 1);
     }
 
-    /// APID = 2048 is one past the valid 11-bit range (max = 2047).
+    /// APID = 2048 es uno más que el rango válido de 11 bits (máx = 2047).
     #[test]
     fn apid_out_of_range() {
-        let err = CcsdsHeader::new_tc(2048, 0, 1).expect_err("should reject APID 2048");
+        let err = CcsdsHeader::new_tc(2048, 0, 1).expect_err("debe rechazar APID 2048");
         assert_eq!(err, CcsdsError::ApidOutOfRange { provided: 2048 });
     }
 
-    /// seq_count = 16384 is one past the valid 14-bit range (max = 16383).
+    /// seq_count = 16384 es uno más que el rango válido de 14 bits (máx = 16383).
     #[test]
     fn seq_count_out_of_range() {
         let err =
-            CcsdsHeader::new_tm(0, 16384, 1).expect_err("should reject seq_count 16384");
+            CcsdsHeader::new_tm(0, 16384, 1).expect_err("debe rechazar seq_count 16384");
         assert_eq!(err, CcsdsError::SeqCountOutOfRange { provided: 16384 });
     }
 
-    /// data_len = 0 is invalid because the CCSDS field stores data_len-1,
-    /// and underflow would make the header encode an incorrect length.
+    /// data_len = 0 es inválido porque el campo CCSDS almacena data_len-1,
+    /// y el desbordamiento haría que la cabecera codifique una longitud incorrecta.
     #[test]
     fn data_len_zero_rejected() {
-        let err = CcsdsHeader::new_tc(1, 0, 0).expect_err("should reject data_len=0");
+        let err = CcsdsHeader::new_tc(1, 0, 0).expect_err("debe rechazar data_len=0");
         assert_eq!(err, CcsdsError::DataLenZero);
     }
 
-    /// Two headers with the same fields should have the same byte representation.
+    /// Dos cabeceras con los mismos campos deben tener la misma representación de bytes.
     #[test]
     fn deterministic_encoding() {
         let a = CcsdsHeader::new_tc(0x200, 5, 8).unwrap();
@@ -327,75 +327,75 @@ mod tests {
         assert_eq!(a.as_bytes(), b.as_bytes());
     }
 
-    /// A TC and TM with the same APID must differ in their type bit (byte 0, bit 4).
+    /// Un TC y un TM con el mismo APID deben diferir en su bit de tipo (byte 0, bit 4).
     #[test]
     fn tc_and_tm_differ_in_type_bit() {
         let tc = CcsdsHeader::new_tc(0x100, 1, 4).unwrap();
         let tm = CcsdsHeader::new_tm(0x100, 1, 4).unwrap();
-        // Byte 0 has the type bit at bit 4; TC must have it set.
+        // El byte 0 tiene el bit de tipo en el bit 4; TC debe tenerlo activado.
         assert_ne!(tc.as_bytes()[0], tm.as_bytes()[0]);
-        // Bytes 1–5 must be the same (only type bit differs).
+        // Los bytes 1–5 deben ser iguales (solo difiere el bit de tipo).
         assert_eq!(tc.as_bytes()[1..], tm.as_bytes()[1..]);
     }
 }
 
 fn main() {
-    println!("=== Example 02: Safe Wrapper around C FFI ===\n");
+    println!("=== Ejemplo 02: Envoltura Segura alrededor de C FFI ===\n");
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Using the safe API: no unsafe anywhere in this code path.
-    // All the unsafe is hidden inside CcsdsHeader's private helpers.
+    // Usar la API segura: no hay unsafe en ningún lugar de esta ruta de código.
+    // Todo el unsafe está oculto dentro de los auxiliares privados de CcsdsHeader.
     // ──────────────────────────────────────────────────────────────────────────
 
-    // Create a TC header — the API validates our inputs before touching C.
+    // Crear una cabecera TC — la API valida nuestras entradas antes de tocar C.
     let tc_header = CcsdsHeader::new_tc(0x100, 1, 4)
-        .expect("valid TC header should succeed");
+        .expect("la cabecera TC válida debe tener éxito");
 
-    println!("TC Header: {}", tc_header);
+    println!("Cabecera TC: {}", tc_header);
     println!("  as_bytes: {:02X?}", tc_header.as_bytes());
     println!();
 
-    // Create a TM header — for telemetry going back to ground.
+    // Crear una cabecera TM — para telemetría que regresa a tierra.
     let tm_header = CcsdsHeader::new_tm(0x050, 42, 64)
-        .expect("valid TM header should succeed");
+        .expect("la cabecera TM válida debe tener éxito");
 
-    println!("TM Header: {}", tm_header);
+    println!("Cabecera TM: {}", tm_header);
     println!("  as_bytes: {:02X?}", tm_header.as_bytes());
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Demonstrate error handling: invalid inputs return Err, not a crash.
+    // Demostrar manejo de errores: las entradas inválidas devuelven Err, no un fallo.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- Error handling ---");
+    println!("--- Manejo de errores ---");
 
     match CcsdsHeader::new_tc(0x800, 0, 1) {
-        Ok(_) => panic!("should have been rejected"),
-        Err(e) => println!("  APID too large: {}", e),
+        Ok(_) => panic!("debería haber sido rechazado"),
+        Err(e) => println!("  APID demasiado grande: {}", e),
     }
 
     match CcsdsHeader::new_tc(0, 20000, 1) {
-        Ok(_) => panic!("should have been rejected"),
-        Err(e) => println!("  seq_count too large: {}", e),
+        Ok(_) => panic!("debería haber sido rechazado"),
+        Err(e) => println!("  seq_count demasiado grande: {}", e),
     }
 
     match CcsdsHeader::new_tc(0, 0, 0) {
-        Ok(_) => panic!("should have been rejected"),
-        Err(e) => println!("  data_len zero: {}", e),
+        Ok(_) => panic!("debería haber sido rechazado"),
+        Err(e) => println!("  data_len cero: {}", e),
     }
 
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Demonstrate from_bytes: decode a header received from the wire.
+    // Demostrar from_bytes: decodificar una cabecera recibida del cable.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- from_bytes (decode received header) ---");
+    println!("--- from_bytes (decodificar cabecera recibida) ---");
     let raw_from_wire: [u8; 6] = [0x11, 0x00, 0xC0, 0x01, 0x00, 0x03];
     let decoded = CcsdsHeader::from_bytes(raw_from_wire);
-    println!("  Decoded: {}", decoded);
+    println!("  Decodificado: {}", decoded);
     assert_eq!(decoded.apid(), 0x100);
     assert_eq!(decoded.seq_count(), 1);
     assert_eq!(decoded.data_len(), 4);
     assert!(decoded.is_tc());
 
-    println!("\nAll safe wrapper demonstrations: PASSED");
+    println!("\nTodas las demostraciones de envoltura segura: PASADAS");
 }

@@ -1,19 +1,19 @@
-//! Exercise 1 — Add complete rustdoc to an undocumented API
+//! Ejercicio 1 — Añadir rustdoc completo a una API sin documentar
 //!
-//! The module below is a fake "temperature sensor driver" with no documentation.
-//! Your task: add rustdoc to EVERY public item, including doc tests.
+//! El módulo de abajo es un "driver de sensor de temperatura" falso sin documentación.
+//! Tu tarea: añadir rustdoc a CADA elemento público, incluyendo doc tests.
 //!
-//! Requirements:
-//!   - Every pub fn/struct/enum must have a /// comment
-//!   - Include # Examples section with a runnable doc test
-//!   - Include # Errors for functions returning Result
-//!   - Include # Panics where applicable
-//!   - Add #![deny(missing_docs)] and fix any remaining violations
+//! Requisitos:
+//!   - Cada pub fn/struct/enum debe tener un comentario ///
+//!   - Incluir sección # Ejemplos con un doc test ejecutable
+//!   - Incluir # Errores para funciones que devuelven Result
+//!   - Incluir # Panics donde corresponda
+//!   - Añadir #![deny(missing_docs)] y corregir cualquier violación restante
 //!
-//! Build docs: cargo doc --example ex1_document_api --open
-//! Run tests:  cargo test --example ex1_document_api
+//! Compilar docs: cargo doc --example ex1_document_api --open
+//! Ejecutar pruebas:  cargo test --example ex1_document_api
 
-// TODO: add #![deny(missing_docs)] here once all items are documented
+// TODO: añadir #![deny(missing_docs)] aquí una vez que todos los elementos estén documentados
 
 pub struct TempSensor {
     pub device_path: String,
@@ -60,14 +60,14 @@ impl TempSensor {
 impl std::fmt::Display for TempError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DeviceNotFound => write!(f, "device not found"),
-            Self::ReadError(e) => write!(f, "read error: {e}"),
-            Self::OutOfRange { value } => write!(f, "value out of range: {value} mc"),
+            Self::DeviceNotFound => write!(f, "dispositivo no encontrado"),
+            Self::ReadError(e) => write!(f, "error de lectura: {e}"),
+            Self::OutOfRange { value } => write!(f, "valor fuera de rango: {value} mc"),
         }
     }
 }
 
 fn main() {
-    println!("Build docs: cargo doc --example ex1_document_api --open");
-    println!("Run tests:  cargo test --example ex1_document_api");
+    println!("Compilar docs: cargo doc --example ex1_document_api --open");
+    println!("Ejecutar pruebas:  cargo test --example ex1_document_api");
 }

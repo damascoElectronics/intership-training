@@ -1,48 +1,48 @@
-//! Exercise 1 — Solution: Fully documented temperature sensor API
+//! Ejercicio 1 — Solución: API de sensor de temperatura completamente documentada
 
 #![deny(missing_docs)]
 
-//! This example demonstrates complete rustdoc for a hardware sensor driver.
+//! Este ejemplo demuestra rustdoc completo para un driver de sensor de hardware.
 
-/// A Linux sysfs temperature sensor driver.
+/// Un driver de sensor de temperatura sysfs de Linux.
 ///
-/// Reads from a sysfs file that returns temperature in millidegrees Celsius,
-/// applies a calibration offset, and validates the result.
+/// Lee de un archivo sysfs que devuelve la temperatura en milígrados Celsius,
+/// aplica un desplazamiento de calibración y valida el resultado.
 ///
-/// # Examples
+/// # Ejemplos
 /// ```no_run
 /// use std::io::Write;
-/// // Pretend we have a real sysfs file at /sys/class/thermal/thermal_zone0/temp
+/// // Supongamos que tenemos un archivo sysfs real en /sys/class/thermal/thermal_zone0/temp
 /// let sensor = TempSensor::new("/sys/class/thermal/thermal_zone0/temp");
-/// // In testing, use a temp file:
+/// // En pruebas, usar un archivo temporal:
 /// ```
 pub struct TempSensor {
-    /// Filesystem path to the sysfs temperature attribute (e.g. `/sys/class/thermal/thermal_zone0/temp`).
+    /// Ruta del sistema de archivos al atributo de temperatura sysfs (ej. `/sys/class/thermal/thermal_zone0/temp`).
     pub device_path: String,
-    /// Calibration offset in millidegrees Celsius, added to every reading.
-    /// Use a negative value to compensate for sensor self-heating.
+    /// Desplazamiento de calibración en milígrados Celsius, añadido a cada lectura.
+    /// Usar un valor negativo para compensar el auto-calentamiento del sensor.
     pub calibration_offset_mc: i32,
 }
 
-/// Errors that can occur when reading from a [`TempSensor`].
+/// Errores que pueden ocurrir al leer de un [`TempSensor`].
 #[derive(Debug)]
 pub enum TempError {
-    /// The sysfs device file does not exist or cannot be opened.
+    /// El archivo de dispositivo sysfs no existe o no se puede abrir.
     DeviceNotFound,
-    /// The file content could not be parsed as an integer.
+    /// El contenido del archivo no pudo analizarse como un entero.
     ReadError(String),
-    /// The calibrated reading is outside the physically plausible range
-    /// (−273 °C to 200 °C).
+    /// La lectura calibrada está fuera del rango físicamente plausible
+    /// (−273 °C a 200 °C).
     OutOfRange {
-        /// The out-of-range value in millidegrees Celsius.
+        /// El valor fuera de rango en milígrados Celsius.
         value: i32,
     },
 }
 
 impl TempSensor {
-    /// Creates a new `TempSensor` for the given sysfs path with no calibration offset.
+    /// Crea un nuevo `TempSensor` para la ruta sysfs dada sin desplazamiento de calibración.
     ///
-    /// # Examples
+    /// # Ejemplos
     /// ```
     /// let s = TempSensor::new("/tmp/fake_sensor");
     /// assert_eq!(s.calibration_offset_mc, 0);
@@ -51,11 +51,11 @@ impl TempSensor {
         Self { device_path: device_path.to_owned(), calibration_offset_mc: 0 }
     }
 
-    /// Sets the calibration offset and returns `self` (builder pattern).
+    /// Establece el desplazamiento de calibración y devuelve `self` (patrón constructor).
     ///
-    /// A positive offset raises readings; a negative offset lowers them.
+    /// Un desplazamiento positivo eleva las lecturas; un desplazamiento negativo las reduce.
     ///
-    /// # Examples
+    /// # Ejemplos
     /// ```
     /// let s = TempSensor::new("/tmp/x").with_calibration(-500);
     /// assert_eq!(s.calibration_offset_mc, -500);
@@ -65,15 +65,15 @@ impl TempSensor {
         self
     }
 
-    /// Reads the temperature in millidegrees Celsius with calibration applied.
+    /// Lee la temperatura en milígrados Celsius con calibración aplicada.
     ///
-    /// # Errors
-    /// - [`TempError::DeviceNotFound`] if the sysfs file cannot be read.
-    /// - [`TempError::ReadError`] if the file content is not a valid integer.
-    /// - [`TempError::OutOfRange`] if the calibrated value is outside
-    ///   −273 000 mc (absolute zero) to 200 000 mc (beyond any normal sensor range).
+    /// # Errores
+    /// - [`TempError::DeviceNotFound`] si el archivo sysfs no puede leerse.
+    /// - [`TempError::ReadError`] si el contenido del archivo no es un entero válido.
+    /// - [`TempError::OutOfRange`] si el valor calibrado está fuera de
+    ///   −273 000 mc (cero absoluto) a 200 000 mc (más allá de cualquier rango normal de sensor).
     ///
-    /// # Examples
+    /// # Ejemplos
     /// ```
     /// use std::io::Write;
     /// let path = "/tmp/test_sensor_mc";
@@ -96,14 +96,14 @@ impl TempSensor {
         }
     }
 
-    /// Reads the temperature as degrees Celsius (floating point).
+    /// Lee la temperatura en grados Celsius (punto flotante).
     ///
-    /// This is a convenience wrapper around [`Self::read_mc`].
+    /// Este es un envoltorio de conveniencia alrededor de [`Self::read_mc`].
     ///
-    /// # Errors
-    /// Same as [`Self::read_mc`].
+    /// # Errores
+    /// Los mismos que [`Self::read_mc`].
     ///
-    /// # Examples
+    /// # Ejemplos
     /// ```
     /// let path = "/tmp/test_sensor_c";
     /// std::fs::write(path, "23500\n").unwrap();
@@ -119,13 +119,13 @@ impl TempSensor {
 impl std::fmt::Display for TempError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DeviceNotFound => write!(f, "device not found"),
-            Self::ReadError(e) => write!(f, "read error: {e}"),
-            Self::OutOfRange { value } => write!(f, "value {value} mc out of valid range"),
+            Self::DeviceNotFound => write!(f, "dispositivo no encontrado"),
+            Self::ReadError(e) => write!(f, "error de lectura: {e}"),
+            Self::OutOfRange { value } => write!(f, "valor {value} mc fuera del rango válido"),
         }
     }
 }
 
 fn main() {
-    println!("Build docs: cargo doc --example ex1_document_api_sol --open");
+    println!("Compilar docs: cargo doc --example ex1_document_api_sol --open");
 }

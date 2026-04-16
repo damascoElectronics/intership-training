@@ -1,17 +1,18 @@
-//! Example 03: Shared Health Table
+//! Ejemplo 03: Tabla de Salud Compartida
 //!
-//! The health table is the central nervous system of FDIR. Every component writes
-//! its own health; a query function synthesises a system-level view.
+//! La tabla de salud es el sistema nervioso central del FDIR. Cada componente escribe
+//! su propia salud; una función de consulta sintetiza una vista a nivel de sistema.
 //!
-//! Design decisions:
-//! - Arc<RwLock<HealthTable>>: many concurrent readers (telemetry), exclusive writer
-//!   per component. RwLock is better than Mutex when reads dominate.
-//! - VecDeque event log: a ring buffer of recent health events satisfies ECSS FDIR-4
-//!   (all fault detection events shall be logged). We cap it to avoid unbounded growth.
-//! - Each entry stores `transition_count`: if a component flaps repeatedly between
-//!   Nominal and Degraded, that itself is a fault signature worth detecting.
+//! Decisiones de diseño:
+//! - Arc<RwLock<HealthTable>>: muchos lectores concurrentes (telemetría), escritor exclusivo
+//!   por componente. RwLock es mejor que Mutex cuando dominan las lecturas.
+//! - Registro de eventos VecDeque: un buffer circular de eventos de salud recientes satisface
+//!   el requisito ECSS FDIR-4 (todos los eventos de detección de fallos deben registrarse).
+//!   Se limita para evitar crecimiento ilimitado.
+//! - Cada entrada almacena `transition_count`: si un componente oscila repetidamente entre
+//!   Nominal y Degradado, eso en sí mismo es una firma de fallo digna de detectar.
 //!
-//! Run: cargo run --example 03_health_table
+//! Ejecutar: cargo run --example 03_health_table
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -23,26 +24,26 @@ use tokio::{sync::RwLock, time::sleep};
 use tracing::{info, warn};
 
 // ---------------------------------------------------------------------------
-// Health types
+// Tipos de salud
 // ---------------------------------------------------------------------------
 
-/// Health state of a single component.
+/// Estado de salud de un único componente.
 ///
-/// Why not a bool? Because "degraded" is qualitatively different from "failed":
-/// a Degraded GPS still gives lower-accuracy position; a Failed GPS gives nothing.
-/// The system can make better decisions with three states than two.
+/// ¿Por qué no un bool? Porque "degradado" es cualitativamente diferente de "fallado":
+/// un GPS Degradado sigue dando posición con menor precisión; un GPS Failed no da nada.
+/// El sistema puede tomar mejores decisiones con tres estados que con dos.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HealthState {
-    /// Operating within normal parameters.
+    /// Operando dentro de los parámetros normales.
     Nominal,
-    /// Reduced capability or intermittent faults; not yet failed.
+    /// Capacidad reducida o fallos intermitentes; aún no ha fallado.
     Degraded { reason: String },
-    /// No usable output; component must be bypassed or replaced.
+    /// Sin salida utilizable; el componente debe ser derivado o reemplazado.
     Failed { reason: String },
 }
 
 impl HealthState {
-    /// Severity ordering, used to synthesise system-level health.
+    /// Ordenación por severidad, usada para sintetizar la salud a nivel de sistema.
     pub fn severity(&self) -> u8 {
         match self {
             HealthState::Nominal => 0,
@@ -62,15 +63,15 @@ impl std::fmt::Display for HealthState {
     }
 }
 
-/// Health record for one named component.
+/// Registro de salud de un componente con nombre.
 #[derive(Debug, Clone)]
 pub struct ComponentHealth {
     pub id: String,
     pub state: HealthState,
-    /// Monotonic timestamp of the last state update.
+    /// Marca de tiempo monotónica de la última actualización de estado.
     pub last_updated: Instant,
-    /// How many times this component has transitioned to a non-Nominal state.
-    /// High flap counts are themselves a fault signature.
+    /// Cuántas veces este componente ha transitado a un estado no Nominal.
+    /// Los conteos altos de oscilación son en sí mismos una firma de fallo.
     pub transition_count: u32,
 }
 
@@ -84,7 +85,7 @@ impl ComponentHealth {
         }
     }
 
-    /// Update the state. Increments transition_count if moving away from Nominal.
+    /// Actualizar el estado. Incrementa transition_count si se aleja de Nominal.
     pub fn update(&mut self, new_state: HealthState) {
         if new_state != HealthState::Nominal {
             self.transition_count += 1;
@@ -94,7 +95,7 @@ impl ComponentHealth {
     }
 }
 
-/// A timestamped record of a health state change, kept in the ring buffer.
+/// Registro con marca de tiempo de un cambio de estado de salud, guardado en el buffer circular.
 #[derive(Debug, Clone)]
 pub struct HealthEvent {
     pub component_id: String,
@@ -103,10 +104,10 @@ pub struct HealthEvent {
     pub timestamp: Instant,
 }
 
-/// Central health table: all components register here.
+/// Tabla de salud central: todos los componentes se registran aquí.
 pub struct HealthTable {
     entries: HashMap<String, ComponentHealth>,
-    /// Ring buffer of recent health transitions. Satisfies ECSS FDIR-4.
+    /// Buffer circular de transiciones de salud recientes. Satisface ECSS FDIR-4.
     event_log: VecDeque<HealthEvent>,
     event_log_capacity: usize,
 }
@@ -120,7 +121,7 @@ impl HealthTable {
         }
     }
 
-    /// Register a new component. Must be called before `set_health`.
+    /// Registrar un nuevo componente. Debe llamarse antes que `set_health`.
     pub fn register(&mut self, id: impl Into<String>) {
         let id = id.into();
         self.entries
@@ -128,7 +129,7 @@ impl HealthTable {
             .or_insert_with(|| ComponentHealth::new(id));
     }
 
-    /// Update a component's health state, logging the transition.
+    /// Actualizar el estado de salud de un componente, registrando la transición.
     pub fn set_health(&mut self, id: &str, new_state: HealthState) {
         let entry = self.entries.entry(id.to_string()).or_insert_with(|| {
             ComponentHealth::new(id)
@@ -137,9 +138,9 @@ impl HealthTable {
         let old_state = entry.state.clone();
         entry.update(new_state.clone());
 
-        // Record the event in the ring buffer.
+        // Registrar el evento en el buffer circular.
         if self.event_log.len() >= self.event_log_capacity {
-            self.event_log.pop_front(); // discard oldest
+            self.event_log.pop_front(); // descartar el más antiguo
         }
         self.event_log.push_back(HealthEvent {
             component_id: id.to_string(),
@@ -149,10 +150,10 @@ impl HealthTable {
         });
     }
 
-    /// System-level health: the worst state across all components.
+    /// Salud a nivel de sistema: el peor estado entre todos los componentes.
     ///
-    /// This is the single bit that ground control watches. If it's non-Nominal,
-    /// they know to look at per-component health for details.
+    /// Este es el único indicador que vigila el control en tierra. Si no es Nominal,
+    /// saben que deben mirar la salud por componente para más detalles.
     pub fn system_health(&self) -> HealthState {
         self.entries
             .values()
@@ -161,17 +162,17 @@ impl HealthTable {
             .unwrap_or(HealthState::Nominal)
     }
 
-    /// Get health for a specific component.
+    /// Obtener la salud de un componente específico.
     pub fn get(&self, id: &str) -> Option<&ComponentHealth> {
         self.entries.get(id)
     }
 
-    /// Recent events from the ring buffer.
+    /// Eventos recientes del buffer circular.
     pub fn recent_events(&self, n: usize) -> Vec<&HealthEvent> {
         self.event_log.iter().rev().take(n).collect()
     }
 
-    /// Count how many components are in each severity level.
+    /// Contar cuántos componentes hay en cada nivel de severidad.
     pub fn summary(&self) -> (usize, usize, usize) {
         let nominal = self.entries.values().filter(|c| c.state == HealthState::Nominal).count();
         let degraded = self
@@ -189,26 +190,26 @@ impl HealthTable {
 }
 
 // ---------------------------------------------------------------------------
-// Shared type alias
+// Alias de tipo compartido
 // ---------------------------------------------------------------------------
 
-/// The shared health table type used throughout the project.
+/// El tipo de tabla de salud compartida usado en todo el proyecto.
 ///
-/// Arc: shared ownership.
-/// RwLock: many readers (telemetry downlink, health queries) one writer per update.
+/// Arc: propiedad compartida.
+/// RwLock: muchos lectores (descarga de telemetría, consultas de salud) un escritor por actualización.
 pub type SharedHealthTable = Arc<RwLock<HealthTable>>;
 
 // ---------------------------------------------------------------------------
 // Demo
 // ---------------------------------------------------------------------------
 
-/// Simulates a sensor component periodically updating its health.
+/// Simula un componente sensor que actualiza periódicamente su salud.
 async fn sensor_component(
     name: String,
     health: SharedHealthTable,
     fail_after: Duration,
 ) {
-    info!(component = %name, "starting");
+    info!(component = %name, "iniciando");
 
     let start = Instant::now();
 
@@ -221,49 +222,49 @@ async fn sensor_component(
             HealthState::Nominal
         } else if elapsed < fail_after + Duration::from_secs(2) {
             HealthState::Degraded {
-                reason: format!("checksum errors after {}s", elapsed.as_secs()),
+                reason: format!("errores de checksum después de {}s", elapsed.as_secs()),
             }
         } else {
             HealthState::Failed {
-                reason: "no response to reset command".into(),
+                reason: "sin respuesta al comando de reinicio".into(),
             }
         };
 
         {
-            // Write lock for the state update.
+            // Bloqueo de escritura para la actualización de estado.
             let mut ht = health.write().await;
             ht.set_health(&name, new_state.clone());
         }
 
-        info!(component = %name, state = %new_state, elapsed_ms = elapsed.as_millis(), "health updated");
+        info!(component = %name, state = %new_state, elapsed_ms = elapsed.as_millis(), "salud actualizada");
     }
 }
 
-/// Periodically reads and prints the overall system health.
+/// Lee e imprime periódicamente la salud general del sistema.
 async fn health_reporter(health: SharedHealthTable) {
     loop {
         sleep(Duration::from_secs(1)).await;
 
-        // Read lock — does not block writers.
+        // Bloqueo de lectura — no bloquea a los escritores.
         let ht = health.read().await;
         let system = ht.system_health();
         let (nominal, degraded, failed) = ht.summary();
 
         warn!(
-            system_state = %system,
-            nominal_components = nominal,
-            degraded_components = degraded,
-            failed_components = failed,
-            "=== SYSTEM HEALTH REPORT ==="
+            estado_sistema = %system,
+            componentes_nominales = nominal,
+            componentes_degradados = degraded,
+            componentes_fallidos = failed,
+            "=== INFORME DE SALUD DEL SISTEMA ==="
         );
 
-        // Print the three most recent events.
+        // Imprimir los tres eventos más recientes.
         for event in ht.recent_events(3) {
             info!(
                 component = %event.component_id,
-                old = %event.old_state,
-                new = %event.new_state,
-                "recent transition"
+                anterior = %event.old_state,
+                nuevo = %event.new_state,
+                "transición reciente"
             );
         }
     }
@@ -275,12 +276,12 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    info!("=== Day 5: Health Table Demo ===");
+    info!("=== Día 5: Demo de Tabla de Salud ===");
 
-    // Create the shared table with a 50-event ring buffer.
+    // Crear la tabla compartida con un buffer circular de 50 eventos.
     let health: SharedHealthTable = Arc::new(RwLock::new(HealthTable::new(50)));
 
-    // Register all components up-front so the reporter shows them immediately.
+    // Registrar todos los componentes de antemano para que el reporter los muestre inmediatamente.
     {
         let mut ht = health.write().await;
         ht.register("temperature-sensor");
@@ -288,38 +289,38 @@ async fn main() {
         ht.register("gps-receiver");
     }
 
-    // Spawn components: temperature sensor fails fast, pressure is fine, GPS degrades slowly.
+    // Lanzar componentes: el sensor de temperatura falla rápido, la presión está bien, el GPS se degrada despacio.
     tokio::spawn(sensor_component(
         "temperature-sensor".into(),
         health.clone(),
-        Duration::from_secs(2), // fails after 2s
+        Duration::from_secs(2), // falla tras 2s
     ));
     tokio::spawn(sensor_component(
         "pressure-sensor".into(),
         health.clone(),
-        Duration::from_secs(30), // effectively never fails in this demo
+        Duration::from_secs(30), // efectivamente nunca falla en esta demo
     ));
     tokio::spawn(sensor_component(
         "gps-receiver".into(),
         health.clone(),
-        Duration::from_secs(4), // fails after 4s
+        Duration::from_secs(4), // falla tras 4s
     ));
 
-    // Spawn the health reporter.
+    // Lanzar el reporter de salud.
     tokio::spawn(health_reporter(health.clone()));
 
-    // Run for 8 seconds.
+    // Ejecutar durante 8 segundos.
     sleep(Duration::from_secs(8)).await;
 
-    // Final detailed report.
+    // Informe detallado final.
     let ht = health.read().await;
-    info!("\n\n--- Final Per-Component Report ---");
+    info!("\n\n--- Informe Final por Componente ---");
     for (id, comp) in &ht.entries {
         info!(
             id = %id,
             state = %comp.state,
-            transitions = comp.transition_count,
-            stale_ms = comp.last_updated.elapsed().as_millis(),
+            transiciones = comp.transition_count,
+            obsoleto_ms = comp.last_updated.elapsed().as_millis(),
         );
     }
 }

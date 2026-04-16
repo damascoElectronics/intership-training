@@ -1,34 +1,34 @@
-// Day 1, Example 5: Graceful Shutdown
+// Día 1, Ejemplo 5: Apagado Gracioso
 //
-// Every production daemon must handle SIGTERM (systemd stopping the service)
-// and SIGINT (Ctrl+C in dev). If you don't, the process gets killed with
-// SIGKILL after a timeout, leaving hardware in an undefined state.
+// Todo daemon en producción debe manejar SIGTERM (systemd deteniendo el servicio)
+// y SIGINT (Ctrl+C en desarrollo). Si no lo haces, el proceso es matado con
+// SIGKILL tras un timeout, dejando el hardware en un estado indefinido.
 //
-// On bare metal you might use a GPIO interrupt or watchdog. In Linux:
-// - systemd sends SIGTERM when stopping a service
-// - You have `TimeoutStopSec` seconds to exit, then you get SIGKILL
-// - A clean exit (exit code 0) tells systemd "healthy stop"
-// - An unclean exit (crash/SIGKILL) triggers restart policies
+// En bare metal podrías usar una interrupción GPIO o watchdog. En Linux:
+// - systemd envía SIGTERM al detener un servicio
+// - Tienes `TimeoutStopSec` segundos para salir, luego recibes SIGKILL
+// - Una salida limpia (código 0) le dice a systemd "parada saludable"
+// - Una salida sucia (crash/SIGKILL) activa las políticas de reinicio
 //
-// The pattern implemented here is used in real space ground software:
-// 1. Install signal handlers for SIGTERM + SIGINT
-// 2. Broadcast shutdown via CancellationToken
-// 3. Each task winds down, flushes data, releases hardware
-// 4. Main waits with a hard timeout (don't hang forever)
-// 5. Clean exit
+// El patrón implementado aquí se usa en software real de tierra espacial:
+// 1. Instalar manejadores de señal para SIGTERM + SIGINT
+// 2. Difundir apagado via CancellationToken
+// 3. Cada tarea cierra, vacía datos, libera hardware
+// 4. Main espera con un timeout duro (no colgar para siempre)
+// 5. Salida limpia
 //
-// Run with:
+// Ejecutar con:
 //   cargo run --example 05_graceful_shutdown
-// Then press Ctrl+C to trigger graceful shutdown.
-// Or send: kill -SIGTERM <pid>
+// Luego presiona Ctrl+C para disparar el apagado gracioso.
+// O envía: kill -SIGTERM <pid>
 
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
-// Represents buffered telemetry that must be flushed on shutdown.
-// In a real system this might be queued CCSDS packets.
+// Representa telemetría en buffer que debe vaciarse al apagar.
+// En un sistema real podrían ser paquetes CCSDS encolados.
 struct TelemetryBuffer {
     packets: Vec<String>,
 }
@@ -43,32 +43,32 @@ impl TelemetryBuffer {
     }
 
     async fn flush(&mut self) {
-        // Simulate writing buffered telemetry to a file or sending over a socket
+        // Simular escritura de telemetría en buffer a un archivo o envío por socket
         if self.packets.is_empty() {
-            println!("  Flush: buffer empty, nothing to do");
+            println!("  Flush: buffer vacío, nada que hacer");
             return;
         }
-        println!("  Flush: writing {} buffered packets...", self.packets.len());
-        tokio::time::sleep(Duration::from_millis(20)).await; // simulate I/O
-        println!("  Flush: done");
+        println!("  Flush: escribiendo {} paquetes en buffer...", self.packets.len());
+        tokio::time::sleep(Duration::from_millis(20)).await; // simular I/O
+        println!("  Flush: completado");
         self.packets.clear();
     }
 }
 
 #[tokio::main]
 async fn main() {
-    println!("=== Example 05: Graceful Shutdown ===");
-    println!("Press Ctrl+C to trigger graceful shutdown\n");
+    println!("=== Ejemplo 05: Apagado Gracioso ===");
+    println!("Presiona Ctrl+C para disparar el apagado gracioso\n");
 
-    // The root cancellation token. We cancel this to initiate shutdown.
-    // Every task gets a clone — they all see cancellation simultaneously.
+    // El token de cancelación raíz. Lo cancelamos para iniciar el apagado.
+    // Cada tarea obtiene un clon — todas ven la cancelación simultáneamente.
     let shutdown_token = CancellationToken::new();
 
-    // A channel for collecting telemetry from all tasks.
-    // Bounded: if the receiver can't keep up, senders block (backpressure).
+    // Un canal para recolectar telemetría de todas las tareas.
+    // Acotado: si el receptor no puede seguir el ritmo, los senders bloquean (contrapresión).
     let (telem_tx, telem_rx) = mpsc::channel::<String>(64);
 
-    // ── Spawn worker tasks ──────────────────────────────────────────────────
+    // ── Lanzar tareas worker ────────────────────────────────────────────────
 
     let heartbeat_handle = tokio::spawn(heartbeat_task(
         shutdown_token.clone(),
@@ -85,104 +85,104 @@ async fn main() {
         telem_rx,
     ));
 
-    // Drop our copy of telem_tx so the aggregator knows when all producers quit
+    // Descartar nuestra copia de telem_tx para que el agregador sepa cuándo todos los productores salen
     drop(telem_tx);
 
-    // ── Install signal handlers ─────────────────────────────────────────────
+    // ── Instalar manejadores de señal ──────────────────────────────────────
     //
-    // tokio::signal::ctrl_c() is a cross-platform Ctrl+C handler.
-    // On Unix, it installs a SIGINT handler.
+    // tokio::signal::ctrl_c() es un manejador Ctrl+C multiplataforma.
+    // En Unix, instala un manejador SIGINT.
     //
-    // For SIGTERM (the signal systemd sends), we need the Unix-specific API.
-    // Using tokio::signal::unix::signal() requires the "signal" feature of tokio.
+    // Para SIGTERM (la señal que envía systemd), necesitamos la API específica de Unix.
+    // Usar tokio::signal::unix::signal() requiere la característica "signal" de tokio.
 
     #[cfg(unix)]
     let shutdown_reason = {
         use tokio::signal::unix::{signal, SignalKind};
 
-        // Install both SIGTERM and SIGINT handlers.
-        // signal() returns a stream — we recv() from it to wait for the signal.
+        // Instalar manejadores tanto para SIGTERM como para SIGINT.
+        // signal() retorna un stream — hacemos recv() para esperar la señal.
         let mut sigterm = signal(SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler");
+            .expect("Falló la instalación del manejador SIGTERM");
         let mut sigint = signal(SignalKind::interrupt())
-            .expect("Failed to install SIGINT handler");
+            .expect("Falló la instalación del manejador SIGINT");
 
-        // Also set up a 3-second auto-shutdown for demo purposes
-        // (so the example terminates without requiring manual Ctrl+C)
+        // También configurar un apagado automático en 3 segundos para propósitos de demo
+        // (para que el ejemplo termine sin requerir Ctrl+C manual)
         let auto_shutdown = tokio::time::sleep(Duration::from_secs(3));
 
-        // Race: whichever arrives first triggers shutdown.
-        // In a real daemon you'd omit the auto_shutdown branch.
+        // Carrera: el que llegue primero dispara el apagado.
+        // En un daemon real omitirías la rama auto_shutdown.
         tokio::select! {
             _ = sigterm.recv() => "SIGTERM",
             _ = sigint.recv()  => "SIGINT (Ctrl+C)",
-            _ = auto_shutdown  => "auto-shutdown (demo mode)",
+            _ = auto_shutdown  => "apagado-automático (modo demo)",
         }
     };
 
-    // On non-Unix platforms, just use ctrl_c
+    // En plataformas no-Unix, solo usar ctrl_c
     #[cfg(not(unix))]
     let shutdown_reason = {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => "SIGINT (Ctrl+C)",
-            _ = tokio::time::sleep(Duration::from_secs(3)) => "auto-shutdown (demo mode)",
+            _ = tokio::time::sleep(Duration::from_secs(3)) => "apagado-automático (modo demo)",
         }
     };
 
-    // ── Initiate graceful shutdown ──────────────────────────────────────────
+    // ── Iniciar apagado gracioso ───────────────────────────────────────────
 
-    println!("\n[SHUTDOWN] Received: {shutdown_reason}");
-    println!("[SHUTDOWN] Broadcasting cancellation to all tasks...");
+    println!("\n[APAGADO] Recibido: {shutdown_reason}");
+    println!("[APAGADO] Difundiendo cancelación a todas las tareas...");
 
-    // This single call notifies ALL tasks that hold a clone of this token.
-    // They will each complete their current unit of work and then exit.
+    // Esta única llamada notifica a TODAS las tareas que tienen un clon de este token.
+    // Cada una completará su unidad de trabajo actual y luego saldrá.
     shutdown_token.cancel();
 
-    // ── Wait for all tasks to exit (with hard timeout) ──────────────────────
+    // ── Esperar a que todas las tareas salgan (con timeout duro) ──────────
     //
-    // systemd's default TimeoutStopSec is 90s. We give our tasks 5s.
-    // If a task hangs (e.g., blocked on hardware), we don't want to block forever.
+    // El TimeoutStopSec por defecto de systemd es 90s. Damos 5s a nuestras tareas.
+    // Si una tarea cuelga (p. ej., bloqueada en hardware), no queremos bloquear para siempre.
 
-    println!("[SHUTDOWN] Waiting for tasks to exit (5s timeout)...");
+    println!("[APAGADO] Esperando que las tareas salgan (timeout de 5s)...");
 
     let all_tasks = async {
-        // Join all task handles. If any panicked, propagate the error.
+        // Unir todos los handles de tareas. Si alguna tuvo panic, propagar el error.
         let _ = heartbeat_handle.await;
         let _ = sensor_handle.await;
         let _ = telem_handle.await;
     };
 
     match timeout(Duration::from_secs(5), all_tasks).await {
-        Ok(()) => println!("[SHUTDOWN] All tasks exited cleanly"),
+        Ok(()) => println!("[APAGADO] Todas las tareas salieron limpiamente"),
         Err(_) => {
-            println!("[SHUTDOWN] WARNING: Some tasks did not exit within timeout");
-            println!("[SHUTDOWN] Proceeding anyway (they will be killed on process exit)");
+            println!("[APAGADO] ADVERTENCIA: Algunas tareas no salieron dentro del timeout");
+            println!("[APAGADO] Procediendo de todas formas (serán matadas al salir el proceso)");
         }
     }
 
-    println!("[SHUTDOWN] Daemon stopped cleanly. Goodbye.");
-    // process::exit(0) is called implicitly — systemd sees exit code 0
+    println!("[APAGADO] Daemon detenido limpiamente. Hasta luego.");
+    // process::exit(0) se llama implícitamente — systemd ve código de salida 0
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Worker tasks: each follows the same pattern
-//   - do work in a loop
-//   - check cancellation token
-//   - on cancellation: flush/cleanup, then return
+// Tareas worker: cada una sigue el mismo patrón
+//   - hacer trabajo en un bucle
+//   - comprobar el token de cancelación
+//   - al cancelar: vaciar/limpiar, luego retornar
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn heartbeat_task(token: CancellationToken, tx: mpsc::Sender<String>) {
     let mut seq = 0u32;
-    println!("[heartbeat] started");
+    println!("[heartbeat] iniciado");
 
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                // Shutdown requested. Send a final "shutdown heartbeat" if possible.
+                // Apagado solicitado. Enviar un "heartbeat de apagado" final si es posible.
                 let final_hb = format!("HB seq={seq} status=SHUTDOWN");
-                // try_send doesn't block — if channel is full, we skip it
+                // try_send no bloquea — si el canal está lleno, lo omitimos
                 let _ = tx.try_send(final_hb);
-                println!("[heartbeat] stopped (sent {seq} heartbeats)");
+                println!("[heartbeat] detenido (enviados {seq} heartbeats)");
                 return;
             }
             _ = tokio::time::sleep(Duration::from_millis(500)) => {
@@ -190,7 +190,7 @@ async fn heartbeat_task(token: CancellationToken, tx: mpsc::Sender<String>) {
                 let hb = format!("HB seq={seq} status=NOMINAL");
                 println!("[heartbeat] tick {seq}");
                 if tx.send(hb).await.is_err() {
-                    println!("[heartbeat] telemetry channel closed, stopping");
+                    println!("[heartbeat] canal de telemetría cerrado, deteniendo");
                     return;
                 }
             }
@@ -200,30 +200,30 @@ async fn heartbeat_task(token: CancellationToken, tx: mpsc::Sender<String>) {
 
 async fn sensor_task(token: CancellationToken, tx: mpsc::Sender<String>) {
     let mut buffer = TelemetryBuffer::new();
-    println!("[sensor] started");
+    println!("[sensor] iniciado");
 
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                // On shutdown: flush whatever is buffered before exiting.
-                // This is critical — in a space system, you can't lose in-flight data.
-                println!("[sensor] shutdown received, flushing buffer...");
+                // Al apagar: vaciar lo que esté en buffer antes de salir.
+                // Esto es crítico — en un sistema espacial, no se pueden perder datos en vuelo.
+                println!("[sensor] apagado recibido, vaciando buffer...");
                 buffer.flush().await;
-                println!("[sensor] stopped");
+                println!("[sensor] detenido");
                 return;
             }
             _ = tokio::time::sleep(Duration::from_millis(300)) => {
-                // Collect sensor reading into buffer
+                // Recopilar lectura del sensor en buffer
                 let pkt = format!("TM temp={:.1}", 20.0 + (rand_f32() * 5.0));
                 buffer.push(pkt.clone());
-                println!("[sensor] buffered: {pkt}");
+                println!("[sensor] en buffer: {pkt}");
 
-                // Flush when buffer has enough packets
+                // Vaciar cuando el buffer tiene suficientes paquetes
                 if buffer.packets.len() >= 3 {
                     buffer.flush().await;
-                    // In real code, flushed data would go somewhere (file, socket)
-                    // Here we just send a notification
-                    let _ = tx.try_send("TM flush complete".into());
+                    // En código real, los datos vaciados irían a algún lugar (archivo, socket)
+                    // Aquí solo enviamos una notificación
+                    let _ = tx.try_send("Flush TM completado".into());
                 }
             }
         }
@@ -232,33 +232,33 @@ async fn sensor_task(token: CancellationToken, tx: mpsc::Sender<String>) {
 
 async fn telemetry_aggregator(token: CancellationToken, mut rx: mpsc::Receiver<String>) {
     let mut total_received = 0usize;
-    println!("[telem] started");
+    println!("[telem] iniciado");
 
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                // Drain remaining messages in channel before stopping.
-                // After cancellation, producers might send a few final messages.
-                // We give them a short window to finish.
-                println!("[telem] shutdown — draining channel...");
-                // Use close() + drain loop to process remaining messages
-                rx.close(); // stop accepting new sends
+                // Drenar mensajes restantes en el canal antes de detenerse.
+                // Tras la cancelación, los productores pueden enviar algunos mensajes finales.
+                // Les damos una pequeña ventana para terminar.
+                println!("[telem] apagado — drenando canal...");
+                // Usar close() + bucle de drenado para procesar mensajes restantes
+                rx.close(); // dejar de aceptar nuevos envíos
                 while let Ok(msg) = rx.try_recv() {
-                    println!("[telem] final msg: {msg}");
+                    println!("[telem] msg final: {msg}");
                     total_received += 1;
                 }
-                println!("[telem] stopped (total received: {total_received})");
+                println!("[telem] detenido (total recibido: {total_received})");
                 return;
             }
             msg = rx.recv() => {
                 match msg {
                     Some(pkt) => {
                         total_received += 1;
-                        // In real code: write to database, forward to ground station, etc.
+                        // En código real: escribir en base de datos, reenviar a estación terrestre, etc.
                     }
                     None => {
-                        // All senders dropped — channel closed
-                        println!("[telem] channel closed, stopping (total: {total_received})");
+                        // Todos los senders descartados — canal cerrado
+                        println!("[telem] canal cerrado, deteniendo (total: {total_received})");
                         return;
                     }
                 }
@@ -267,7 +267,7 @@ async fn telemetry_aggregator(token: CancellationToken, mut rx: mpsc::Receiver<S
     }
 }
 
-// Minimal pseudo-random float for demo purposes (no rand dependency needed)
+// Float pseudo-aleatorio mínimo para propósitos de demo (sin dependencia de rand)
 fn rand_f32() -> f32 {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()

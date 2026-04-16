@@ -1,64 +1,64 @@
-# Day 9 — Verification & Testing
+# Día 9 — Verificación y pruebas
 
-**Theme:** Property-based testing, state machine invariants, and memory safety with Miri.
+**Tema:** Pruebas basadas en propiedades, invariantes de máquinas de estado y seguridad de memoria con Miri.
 
-Unit tests check specific cases. Property-based tests check *all* cases — the framework
-generates thousands of random inputs and searches for counterexamples. For safety-critical
-embedded software this is the difference between "it worked in our tests" and "it works".
-
----
-
-## Learning Goals
-
-- Write `proptest!` properties for CCSDS packet round-trips
-- Model a state machine as a property (any valid sequence of events must obey the invariants)
-- Test a codec (COBS) with encode/decode round-trip and boundary properties
-- Understand what Miri checks and how to structure unsafe code to survive it
+Las pruebas unitarias comprueban casos específicos. Las pruebas basadas en propiedades comprueban *todos* los casos — el framework
+genera miles de entradas aleatorias y busca contraejemplos. Para software embebido de seguridad crítica
+esto marca la diferencia entre "funcionó en nuestras pruebas" y "funciona".
 
 ---
 
-## Examples
+## Objetivos de aprendizaje
 
-| File | What it demonstrates |
-|------|----------------------|
-| `01_proptest_packet.rs` | Round-trip APID, sequence count, full packet; no-panic on arbitrary bytes |
-| `02_proptest_state_machine.rs` | Health event strategy, `failed_requires_manual_reset` invariant |
+- Escribir propiedades `proptest!` para viajes de ida y vuelta de paquetes CCSDS
+- Modelar una máquina de estados como una propiedad (cualquier secuencia válida de eventos debe obedecer los invariantes)
+- Probar un codec (COBS) con propiedades de viaje de ida y vuelta encode/decode y de límites
+- Entender qué comprueba Miri y cómo estructurar código unsafe para superarlo
+
+---
+
+## Ejemplos
+
+| Fichero | Qué demuestra |
+|---------|---------------|
+| `01_proptest_packet.rs` | Viaje de ida y vuelta de APID, contador de secuencia, paquete completo; sin pánico con bytes arbitrarios |
+| `02_proptest_state_machine.rs` | Estrategia de eventos de salud, invariante `failed_requires_manual_reset` |
 | `03_property_tests.rs` | COBS encode/decode: `encoded_has_no_zeros`, `roundtrip`, `length_bound` |
-| `04_miri_safety.rs` | `MaybeUninit`, pointer provenance; commented UB examples with explanations |
+| `04_miri_safety.rs` | `MaybeUninit`, procedencia de punteros; ejemplos UB comentados con explicaciones |
 
-Run all tests (includes proptest):
+Ejecutar todas las pruebas (incluye proptest):
 ```
 cargo test -p day9-verification
 ```
 
-Run Miri on the safety example (requires nightly + `cargo +nightly miri`):
+Ejecutar Miri en el ejemplo de seguridad (requiere nightly + `cargo +nightly miri`):
 ```
 cargo +nightly miri test -p day9-verification
 ```
 
 ---
 
-## Exercises
+## Ejercicios
 
-### Exercise 1 — Find the COBS Bug (`ex1_proptest_codec.rs`)
+### Ejercicio 1 — Encontrar el bug en COBS (`ex1_proptest_codec.rs`)
 
-The file contains a deliberately buggy COBS encoder. Your task:
+El fichero contiene un encoder COBS deliberadamente defectuoso. Tu tarea:
 
-1. Write a `roundtrip` proptest property: `decode(encode(input)) == input`
-2. Write a `no_zeros` property: encoded output never contains `0x00`
-3. Run `cargo test` — proptest will find a failing case
-4. Fix the encoder
-5. Add a regression test for the specific input that failed
+1. Escribir una propiedad proptest `roundtrip`: `decode(encode(input)) == input`
+2. Escribir una propiedad `no_zeros`: la salida codificada nunca contiene `0x00`
+3. Ejecutar `cargo test` — proptest encontrará un caso que falla
+4. Corregir el encoder
+5. Añadir una prueba de regresión para la entrada específica que falló
 
-**Hint:** the bug manifests only when a run of non-zero bytes is exactly 254 bytes long.
+**Pista:** el bug se manifiesta solo cuando una secuencia de bytes no nulos tiene exactamente 254 bytes de longitud.
 
-Solution: `ex1_proptest_codec_sol.rs`
+Solución: `ex1_proptest_codec_sol.rs`
 
 ---
 
-## Key Concepts
+## Conceptos clave
 
-### What proptest does
+### Qué hace proptest
 
 ```rust
 proptest! {
@@ -71,35 +71,35 @@ proptest! {
 }
 ```
 
-The macro generates 256 random `Vec<u8>` values (configurable). When it finds a failure it
-*shrinks* — finds the smallest failing case — and reports that. "Input length 254, all bytes
-= 0xFF" is more useful than "some 10 000-byte buffer".
+La macro genera 256 valores `Vec<u8>` aleatorios (configurable). Cuando encuentra un fallo,
+*reduce* — encuentra el caso mínimo que falla — y lo reporta. "Longitud de entrada 254, todos los bytes
+= 0xFF" es más útil que "algún buffer de 10 000 bytes".
 
 ### COBS (Consistent Overhead Byte Stuffing)
 
-COBS is a serial framing codec that eliminates `0x00` from encoded data. This allows `0x00`
-to be used as a packet delimiter on a byte stream, giving unambiguous framing without escaping.
+COBS es un codec de enmarcado serie que elimina `0x00` de los datos codificados. Esto permite usar `0x00`
+como delimitador de paquetes en un flujo de bytes, dando un enmarcado inequívoco sin escaping.
 
-Encoding rules:
-- Replace each `0x00` with a forward pointer to the next `0x00` (or end-of-frame)
-- Maximum overhead: 1 byte per 254 payload bytes (one overhead byte at start, one per 254 block)
+Reglas de codificación:
+- Reemplazar cada `0x00` con un puntero hacia el siguiente `0x00` (o fin de trama)
+- Máximo overhead: 1 byte por cada 254 bytes de payload (un byte de overhead al inicio, uno por cada bloque de 254)
 
 ### Miri
 
-Miri is an interpreter for Rust MIR that detects:
-- Use of uninitialised memory
-- Out-of-bounds memory accesses
-- Pointer aliasing violations (stacked borrows)
-- Invalid values in typed positions
+Miri es un intérprete para Rust MIR que detecta:
+- Uso de memoria no inicializada
+- Accesos a memoria fuera de límites
+- Violaciones de aliasing de punteros (stacked borrows)
+- Valores inválidos en posiciones tipadas
 
-Run it with `cargo +nightly miri test`. It is slow (10–100× real execution) but finds bugs
-that sanitizers miss. Ideal for running on the `unsafe` modules of your codebase.
+Ejecutarlo con `cargo +nightly miri test`. Es lento (10–100× la ejecución real) pero encuentra bugs
+que los sanitizadores no detectan. Ideal para ejecutar sobre los módulos `unsafe` de tu código.
 
-### When proptest finds a bug
+### Cuando proptest encuentra un bug
 
-1. Look at the **shrunk input** — it is the minimal counterexample
-2. Add it as a `#[test]` regression case immediately (before fixing the bug)
-3. Fix the bug
-4. Confirm both the regression test and proptest pass
+1. Examinar la **entrada reducida** — es el contraejemplo mínimo
+2. Añadirla como caso de regresión `#[test]` inmediatamente (antes de corregir el bug)
+3. Corregir el bug
+4. Confirmar que tanto la prueba de regresión como proptest pasan
 
-This workflow is called *test-driven debugging*.
+Este flujo de trabajo se llama *depuración orientada por pruebas*.

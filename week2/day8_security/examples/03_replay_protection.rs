@@ -1,14 +1,14 @@
-//! Example 03 — Replay attack protection with a sliding window
+//! Ejemplo 03 — Protección contra ataques de repetición con ventana deslizante
 //!
-//! Even if HMAC prevents forgery, an attacker can record a valid TC and
-//! send it again later (replay attack).  A sequence number window defeats this.
+//! Aunque HMAC previene la falsificación, un atacante puede grabar un TC válido y
+//! enviarlo de nuevo más tarde (ataque de repetición). Una ventana de número de secuencia derrota esto.
 //!
-//! Run with:  cargo run --example 03_replay_protection
+//! Ejecutar con:  cargo run --example 03_replay_protection
 
-/// 64-packet sliding window replay protector.
+/// Protector de repetición con ventana deslizante de 64 paquetes.
 pub struct ReplayWindow {
     last_seq: u16,
-    /// Bitmask: bit N set means seq (last_seq − N) was already accepted.
+    /// Máscara de bits: el bit N establecido significa que seq (last_seq − N) ya fue aceptado.
     window: u64,
     initialized: bool,
 }
@@ -31,27 +31,27 @@ impl ReplayWindow {
             return ReplayResult::Accept;
         }
 
-        // Use 14-bit arithmetic (CCSDS seq count wraps at 0x3FFF)
+        // Usar aritmética de 14 bits (el contador de seq CCSDS wrappea en 0x3FFF)
         let diff = (seq as i32 - self.last_seq as i32).rem_euclid(0x4000) as u16;
 
         if diff == 0 {
-            return ReplayResult::Replay; // exact duplicate
+            return ReplayResult::Replay; // duplicado exacto
         }
 
         if diff <= 64 {
-            // Packet is ahead of us — advance window
+            // El paquete está adelante de nosotros — avanzar ventana
             self.window = self.window.wrapping_shl(diff as u32) | 1;
             self.last_seq = seq;
             ReplayResult::Accept
         } else if diff > 0x3FC0 {
-            // Packet is behind us (diff would be negative in signed arithmetic)
+            // El paquete está detrás (diff sería negativo en aritmética con signo)
             let back = (0x4000u32 - diff as u32) as usize;
             if back >= 64 { return ReplayResult::TooOld; }
             if self.window & (1u64 << back) != 0 { return ReplayResult::Replay; }
             self.window |= 1u64 << back;
             ReplayResult::Accept
         } else {
-            // Very far ahead — large gap in sequence (accept, advance window)
+            // Muy adelante — gran salto en la secuencia (aceptar, avanzar ventana)
             self.window = 1;
             self.last_seq = seq;
             ReplayResult::Accept
@@ -62,32 +62,32 @@ impl ReplayWindow {
 fn main() {
     let mut window = ReplayWindow::new();
 
-    println!("=== Replay Window Demo ===\n");
+    println!("=== Demo de ventana de repetición ===\n");
 
     let scenarios: &[(u16, &str)] = &[
-        (100, "first packet"),
-        (101, "sequential"),
-        (102, "sequential"),
-        (104, "gap (103 lost)"),
-        (103, "out-of-order but within window"),
-        (101, "REPLAY of seq=101"),
-        (100, "REPLAY of initial seq=100"),
-        (90,  "TOO OLD (> 64 behind current)"),
-        (105, "back to normal"),
+        (100, "primer paquete"),
+        (101, "secuencial"),
+        (102, "secuencial"),
+        (104, "salto (103 perdido)"),
+        (103, "fuera de orden pero dentro de la ventana"),
+        (101, "REPETICIÓN de seq=101"),
+        (100, "REPETICIÓN del seq=100 inicial"),
+        (90,  "DEMASIADO ANTIGUO (> 64 detrás del actual)"),
+        (105, "vuelta a la normalidad"),
     ];
 
     for &(seq, desc) in scenarios {
         let result = window.check_and_advance(seq);
         let status = match result {
-            ReplayResult::Accept  => "ACCEPT",
-            ReplayResult::Replay  => "REJECT (replay)",
-            ReplayResult::TooOld  => "REJECT (too old)",
+            ReplayResult::Accept  => "ACEPTAR",
+            ReplayResult::Replay  => "RECHAZAR (repetición)",
+            ReplayResult::TooOld  => "RECHAZAR (demasiado antiguo)",
         };
-        println!("  seq={seq:4}  [{status:25}]  {desc}");
+        println!("  seq={seq:4}  [{status:30}]  {desc}");
     }
 
     println!();
-    println!("The window approach accepts out-of-order packets within 64 of the");
-    println!("latest seen — necessary because the RF uplink may reorder packets.");
-    println!("It rejects exact duplicates and packets too far in the past.");
+    println!("El enfoque de ventana acepta paquetes fuera de orden dentro de 64 del");
+    println!("último visto — necesario porque el enlace ascendente RF puede reordenar paquetes.");
+    println!("Rechaza duplicados exactos y paquetes demasiado antiguos.");
 }

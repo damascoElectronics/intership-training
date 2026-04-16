@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution
+//! Ejercicio 1 — Solución
 
 #![allow(dead_code)]
 
@@ -40,7 +40,7 @@ pub fn process_tc_stream(packets: &[RawTcWithHmac], key: &[u8]) -> Vec<Result<Ve
     let mut results = Vec::new();
 
     for pkt in packets {
-        // 1. Verify HMAC
+        // 1. Verificar HMAC
         let mut mac = HmacSha256::new_from_slice(key).unwrap();
         mac.update(&pkt.payload);
         let expected: [u8; 32] = mac.finalize().into_bytes().into();
@@ -49,7 +49,7 @@ pub fn process_tc_stream(packets: &[RawTcWithHmac], key: &[u8]) -> Vec<Result<Ve
             continue;
         }
 
-        // 2. Replay check
+        // 2. Verificación de repetición
         let seq = pkt.seq();
         if seen_seqs.contains(&seq) {
             results.push(Err(RejectionReason::Replay));
@@ -57,7 +57,7 @@ pub fn process_tc_stream(packets: &[RawTcWithHmac], key: &[u8]) -> Vec<Result<Ve
         }
         seen_seqs.insert(seq);
 
-        // 3. Parse and accept
+        // 3. Parsear y aceptar
         let apid = u16::from_be_bytes([pkt.payload[0], pkt.payload[1]]);
         let service = pkt.payload[4];
         let subservice = pkt.payload[5];
@@ -104,4 +104,4 @@ mod tests {
     }
 }
 
-fn main() { println!("Run tests with: cargo test --example ex1_secure_tc_receiver_sol"); }
+fn main() { println!("Ejecutar las pruebas con: cargo test --example ex1_secure_tc_receiver_sol"); }

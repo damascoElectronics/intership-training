@@ -1,22 +1,23 @@
-//! Example 05: Typestate Pattern for Mode Management
+//! Ejemplo 05: Patrón Typestate para Gestión de Modos
 //!
-//! The typestate pattern uses Rust's type system to enforce valid state transitions
-//! at **compile time**. The key insight: instead of a single `struct OBC` with a
-//! runtime `mode: Mode` enum, we parameterise the struct: `struct OBC<Mode>`.
+//! El patrón typestate usa el sistema de tipos de Rust para hacer cumplir transiciones de
+//! estado válidas en **tiempo de compilación**. La idea clave: en lugar de un único
+//! `struct OBC` con un enum `mode: Mode` en tiempo de ejecución, parametrizamos la
+//! estructura: `struct OBC<Mode>`.
 //!
-//! Methods that are only legal in certain modes exist only on the corresponding
-//! `impl OBC<ThatMode>` block. Calling them in the wrong mode is a **compile error**,
-//! not a runtime panic. Zero runtime cost, maximum safety.
+//! Los métodos que solo son válidos en ciertos modos existen únicamente en el bloque
+//! `impl OBC<EseModo>` correspondiente. Llamarlos en el modo equivocado es un **error de
+//! compilación**, no un pánico en ejecución. Coste cero en tiempo de ejecución, máxima seguridad.
 //!
-//! This is directly applicable to spacecraft OBC software:
-//! - You must not fire thrusters in SafeMode (structural risk).
-//! - You must not run science instruments during slew manoeuvres (pointing error).
-//! - You must not accept telecommands during emergency mode (no auth possible).
+//! Esto es directamente aplicable al software de OBC de naves espaciales:
+//! - No se deben disparar propulsores en SafeMode (riesgo estructural).
+//! - No se deben ejecutar instrumentos científicos durante maniobras de orientación (error de apuntamiento).
+//! - No se deben aceptar telecomandos durante el modo de emergencia (sin autenticación posible).
 //!
-//! `PhantomData<Mode>` tells the compiler that OBC is parameterised by Mode even
-//! though Mode doesn't appear in any field. It has zero size at runtime.
+//! `PhantomData<Mode>` le dice al compilador que OBC está parametrizado por Mode aunque
+//! Mode no aparezca en ningún campo. Tiene tamaño cero en tiempo de ejecución.
 //!
-//! Run: cargo run --example 05_safe_state
+//! Ejecutar: cargo run --example 05_safe_state
 
 use std::{
     collections::HashMap,
@@ -29,7 +30,7 @@ use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
 // ---------------------------------------------------------------------------
-// Health table (minimal, standalone)
+// Tabla de salud (mínima, independiente)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,7 +57,7 @@ pub struct HealthTable {
 impl HealthTable {
     pub fn new() -> Self { Self { entries: HashMap::new() } }
     pub fn set(&mut self, id: &str, state: HealthState) {
-        info!(component = %id, state = %state, "health updated");
+        info!(component = %id, state = %state, "salud actualizada");
         self.entries.insert(id.to_string(), state);
     }
     pub fn get(&self, id: &str) -> Option<&HealthState> { self.entries.get(id) }
@@ -65,20 +66,20 @@ impl HealthTable {
 pub type SharedHealth = Arc<RwLock<HealthTable>>;
 
 // ---------------------------------------------------------------------------
-// Mode marker types
+// Tipos marcadores de modo
 // ---------------------------------------------------------------------------
 
-/// Normal spacecraft operations. Full capability available.
+/// Operaciones normales de la nave espacial. Capacidad completa disponible.
 pub struct Nominal;
 
-/// Minimal-risk configuration. Thrusters safed, non-essentials off, comm only.
+/// Configuración de mínimo riesgo. Propulsores asegurados, no esenciales apagados, solo comunicaciones.
 pub struct SafeMode;
 
-/// Last-resort mode. Survival heaters, emergency beacon, no commands.
+/// Modo de último recurso. Calefactores de supervivencia, baliza de emergencia, sin comandos.
 pub struct Emergency;
 
 // ---------------------------------------------------------------------------
-// Housekeeping report
+// Informe de telemetría de mantenimiento (housekeeping)
 // ---------------------------------------------------------------------------
 
 pub struct HkReport {
@@ -94,35 +95,35 @@ pub struct DiagResult {
 }
 
 // ---------------------------------------------------------------------------
-// OBC type — parameterised by mode
+// Tipo OBC — parametrizado por modo
 // ---------------------------------------------------------------------------
 
-/// On-Board Computer, with compile-time mode enforcement.
+/// Computadora de a Bordo (OBC), con cumplimiento de modo en tiempo de compilación.
 ///
-/// `_mode: PhantomData<Mode>` is a zero-size field that carries the mode type
-/// through the type system without occupying any memory.
+/// `_mode: PhantomData<Mode>` es un campo de tamaño cero que transporta el tipo de modo
+/// a través del sistema de tipos sin ocupar ninguna memoria.
 pub struct OBC<Mode> {
     _mode: PhantomData<Mode>,
     pub health: SharedHealth,
 }
 
 // ---------------------------------------------------------------------------
-// Nominal mode — full capabilities
+// Modo Nominal — capacidades completas
 // ---------------------------------------------------------------------------
 
 impl OBC<Nominal> {
-    /// Create the OBC in Nominal mode (initial state after boot).
+    /// Crear el OBC en modo Nominal (estado inicial tras el arranque).
     pub fn new(health: SharedHealth) -> Self {
-        info!("OBC: initialising in Nominal mode");
+        info!("OBC: inicializando en modo Nominal");
         Self {
             _mode: PhantomData,
             health,
         }
     }
 
-    /// Collect housekeeping telemetry — only meaningful in normal ops.
+    /// Recopilar telemetría de mantenimiento — solo tiene sentido en operación normal.
     pub fn collect_housekeeping(&self) -> HkReport {
-        info!("OBC[Nominal]: collecting housekeeping");
+        info!("OBC[Nominal]: recopilando telemetría de mantenimiento");
         HkReport {
             timestamp: Instant::now(),
             cpu_percent: 12.5,
@@ -131,31 +132,31 @@ impl OBC<Nominal> {
         }
     }
 
-    /// Execute an orbit manoeuvre — ONLY available in Nominal mode.
+    /// Ejecutar una maniobra orbital — SOLO disponible en modo Nominal.
     ///
-    /// In SafeMode or Emergency, this method does not exist on the type.
-    /// The compiler will reject any attempt to call it.
+    /// En SafeMode o Emergency, este método no existe en el tipo.
+    /// El compilador rechazará cualquier intento de llamarlo.
     pub fn execute_orbit_manoeuvre(&self, delta_v_ms: f64) -> Result<(), String> {
-        info!(delta_v = delta_v_ms, "OBC[Nominal]: executing orbit manoeuvre");
+        info!(delta_v = delta_v_ms, "OBC[Nominal]: ejecutando maniobra orbital");
         if delta_v_ms.abs() > 100.0 {
-            return Err(format!("delta-v {delta_v_ms} m/s exceeds single-burn limit"));
+            return Err(format!("delta-v {delta_v_ms} m/s excede el límite de quema única"));
         }
         Ok(())
     }
 
-    /// Downlink science data — only in Nominal.
+    /// Transmitir datos científicos — solo en Nominal.
     pub fn downlink_science_data(&self, payload_id: &str) -> Result<(), String> {
-        info!(payload = %payload_id, "OBC[Nominal]: downlinking science data");
+        info!(payload = %payload_id, "OBC[Nominal]: transmitiendo datos científicos");
         Ok(())
     }
 
-    /// Transition to SafeMode. Consumes self, returning OBC<SafeMode>.
+    /// Transición a SafeMode. Consume self, devolviendo OBC<SafeMode>.
     ///
-    /// Consuming self is critical: you cannot use the Nominal OBC after this.
-    /// There is no "accidentally operating in Nominal while thinking you're safe".
+    /// Consumir self es crítico: no se puede usar el OBC en Nominal después de esto.
+    /// No hay "operar accidentalmente en Nominal mientras se cree que se está en seguro".
     pub fn enter_safe_mode(self, reason: &str) -> OBC<SafeMode> {
-        warn!(reason = %reason, "OBC[Nominal]: entering SafeMode");
-        // In real hardware: disable non-essential loads, safe thrusters, etc.
+        warn!(reason = %reason, "OBC[Nominal]: entrando en SafeMode");
+        // En hardware real: deshabilitar cargas no esenciales, asegurar propulsores, etc.
         OBC {
             _mode: PhantomData,
             health: self.health,
@@ -164,40 +165,40 @@ impl OBC<Nominal> {
 }
 
 // ---------------------------------------------------------------------------
-// SafeMode — restricted capabilities
+// SafeMode — capacidades restringidas
 // ---------------------------------------------------------------------------
 
 impl OBC<SafeMode> {
-    /// Run self-diagnostics — makes sense in safe mode to find the fault.
+    /// Ejecutar autodiagnósticos — tiene sentido en modo seguro para encontrar el fallo.
     pub fn run_diagnostics(&self) -> DiagResult {
-        info!("OBC[SafeMode]: running diagnostics");
-        // Simulate: check memory, check sensor connectivity, check power budget.
+        info!("OBC[SafeMode]: ejecutando diagnósticos");
+        // Simular: verificar memoria, verificar conectividad de sensores, verificar presupuesto de energía.
         DiagResult {
             passed: true,
-            details: "memory OK, sensors responding, power nominal".into(),
+            details: "memoria OK, sensores respondiendo, energía nominal".into(),
         }
     }
 
-    /// Transmit a safe-mode beacon so ground knows we're alive.
+    /// Transmitir una baliza de modo seguro para que tierra sepa que seguimos activos.
     pub fn transmit_beacon(&self) {
-        info!("OBC[SafeMode]: transmitting safe-mode beacon on emergency frequency");
+        info!("OBC[SafeMode]: transmitiendo baliza de modo seguro en frecuencia de emergencia");
     }
 
-    /// Attempt recovery to Nominal mode.
+    /// Intentar recuperación al modo Nominal.
     ///
-    /// Returns Ok(OBC<Nominal>) if diagnostics pass, Err(OBC<SafeMode>) if not.
-    /// The Err case means we stay in SafeMode — typestate ensures we can't
-    /// accidentally use the Nominal interface after a failed recovery.
+    /// Devuelve Ok(OBC<Nominal>) si los diagnósticos pasan, Err(OBC<SafeMode>) si no.
+    /// El caso Err significa que permanecemos en SafeMode — el typestate garantiza que no
+    /// podemos usar accidentalmente la interfaz Nominal tras una recuperación fallida.
     pub fn recover_to_nominal(self) -> Result<OBC<Nominal>, OBC<SafeMode>> {
         let diag = self.run_diagnostics();
         if diag.passed {
-            info!("OBC[SafeMode]: diagnostics passed — recovering to Nominal");
+            info!("OBC[SafeMode]: diagnósticos pasados — recuperando a Nominal");
             Ok(OBC {
                 _mode: PhantomData,
                 health: self.health,
             })
         } else {
-            warn!(details = %diag.details, "OBC[SafeMode]: diagnostics failed — staying in SafeMode");
+            warn!(details = %diag.details, "OBC[SafeMode]: diagnósticos fallidos — permaneciendo en SafeMode");
             Err(OBC {
                 _mode: PhantomData,
                 health: self.health,
@@ -205,9 +206,9 @@ impl OBC<SafeMode> {
         }
     }
 
-    /// Escalate to Emergency mode — used when safe mode can't be maintained.
+    /// Escalar a modo Emergency — usado cuando no se puede mantener el modo seguro.
     pub fn escalate_to_emergency(self) -> OBC<Emergency> {
-        error!("OBC[SafeMode]: escalating to EMERGENCY mode");
+        error!("OBC[SafeMode]: escalando a modo EMERGENCY");
         OBC {
             _mode: PhantomData,
             health: self.health,
@@ -216,39 +217,39 @@ impl OBC<SafeMode> {
 }
 
 // ---------------------------------------------------------------------------
-// Emergency mode — survival only
+// Modo Emergency — solo supervivencia
 // ---------------------------------------------------------------------------
 
 impl OBC<Emergency> {
-    /// Activate survival heaters (protect batteries from thermal damage).
+    /// Activar calefactores de supervivencia (proteger baterías de daños térmicos).
     pub fn activate_survival_heaters(&self) {
-        error!("OBC[Emergency]: activating survival heaters");
+        error!("OBC[Emergency]: activando calefactores de supervivencia");
     }
 
-    /// Transmit emergency beacon.
+    /// Transmitir baliza de emergencia.
     pub fn transmit_emergency_beacon(&self) {
-        error!("OBC[Emergency]: transmitting EMERGENCY beacon");
+        error!("OBC[Emergency]: transmitiendo baliza de EMERGENCIA");
     }
-    // NOTE: No thrusters, no science, no manoeuvres available here.
+    // NOTA: Sin propulsores, sin ciencia, sin maniobras disponibles aquí.
 }
 
 // ---------------------------------------------------------------------------
-// Compile-time safety demonstration
+// Demostración de seguridad en tiempo de compilación
 // ---------------------------------------------------------------------------
 
-/// This function accepts only OBC<SafeMode>. It cannot accidentally fire thrusters.
+/// Esta función acepta solo OBC<SafeMode>. No puede disparar propulsores accidentalmente.
 ///
-/// If you try to call `obc.execute_orbit_manoeuvre(...)` here, the compiler says:
+/// Si intentas llamar a `obc.execute_orbit_manoeuvre(...)` aquí, el compilador dice:
 ///   "no method named `execute_orbit_manoeuvre` found for type `OBC<SafeMode>`"
-/// There's no runtime check, no panic at 2am, no anomaly report after the fact.
+/// No hay comprobación en ejecución, no hay pánico a las 2am, no hay informe de anomalía después.
 #[allow(dead_code)]
 fn safe_mode_operations(obc: &OBC<SafeMode>) {
     obc.transmit_beacon();
     let diag = obc.run_diagnostics();
-    info!(passed = diag.passed, details = %diag.details, "diagnostics result");
+    info!(passed = diag.passed, details = %diag.details, "resultado de diagnósticos");
 
-    // Uncommenting the next line is a COMPILE ERROR — orbit_manoeuvre doesn't
-    // exist on OBC<SafeMode>. This is the whole point of the typestate pattern.
+    // Descomentar la siguiente línea es un ERROR DE COMPILACIÓN — execute_orbit_manoeuvre
+    // no existe en OBC<SafeMode>. Este es el objetivo del patrón typestate.
     // obc.execute_orbit_manoeuvre(5.0);  // error[E0599]: no method named ...
 }
 
@@ -262,47 +263,47 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    info!("=== Day 5: Typestate Mode Management Demo ===");
+    info!("=== Día 5: Demo de Gestión de Modos con Typestate ===");
 
     let health: SharedHealth = Arc::new(RwLock::new(HealthTable::new()));
 
-    // --- Normal operations ---
+    // --- Operaciones normales ---
     let obc = OBC::<Nominal>::new(health.clone());
 
     let hk = obc.collect_housekeeping();
-    info!(cpu = hk.cpu_percent, temp_mc = hk.temperature_mc, "housekeeping collected");
+    info!(cpu = hk.cpu_percent, temp_mc = hk.temperature_mc, "telemetría de mantenimiento recopilada");
 
-    obc.execute_orbit_manoeuvre(5.0).expect("manoeuvre failed");
-    obc.downlink_science_data("LIDAR_SCAN_42").expect("downlink failed");
+    obc.execute_orbit_manoeuvre(5.0).expect("maniobra fallida");
+    obc.downlink_science_data("LIDAR_SCAN_42").expect("transmisión fallida");
 
-    // --- Fault detected: enter safe mode ---
-    // `obc` is moved here. The Nominal OBC no longer exists after this line.
-    let safe_obc = obc.enter_safe_mode("star tracker NAK on I2C after 3 retries");
+    // --- Fallo detectado: entrar en modo seguro ---
+    // `obc` se mueve aquí. El OBC en Nominal ya no existe después de esta línea.
+    let safe_obc = obc.enter_safe_mode("rastreador de estrellas NAK en I2C tras 3 reintentos");
 
-    // We can no longer do this — `obc` is consumed:
-    // obc.execute_orbit_manoeuvre(1.0);  // error[E0382]: use of moved value: `obc`
+    // Ya no podemos hacer esto — `obc` ha sido consumido:
+    // obc.execute_orbit_manoeuvre(1.0);  // error[E0382]: uso de valor movido: `obc`
 
-    // --- Safe mode operations ---
+    // --- Operaciones en modo seguro ---
     safe_mode_operations(&safe_obc);
     safe_obc.transmit_beacon();
 
-    // --- Attempt recovery ---
+    // --- Intentar recuperación ---
     match safe_obc.recover_to_nominal() {
         Ok(nominal_obc) => {
-            info!("Recovery successful! Back in Nominal mode.");
-            // We're back — can do Nominal things again.
+            info!("¡Recuperación exitosa! De vuelta en modo Nominal.");
+            // Estamos de vuelta — podemos hacer cosas de Nominal de nuevo.
             nominal_obc.collect_housekeeping();
-            // And we cannot do SafeMode things:
+            // Y no podemos hacer cosas de SafeMode:
             // nominal_obc.run_diagnostics();  // error[E0599]: no method found
         }
         Err(still_safe) => {
-            warn!("Recovery failed. Staying in SafeMode.");
-            // Escalate.
+            warn!("Recuperación fallida. Permaneciendo en SafeMode.");
+            // Escalar.
             let emergency_obc = still_safe.escalate_to_emergency();
             emergency_obc.activate_survival_heaters();
             emergency_obc.transmit_emergency_beacon();
         }
     }
 
-    info!("Demo complete. Key point: the compiler enforced mode constraints — no runtime checks needed.");
+    info!("Demo completada. Punto clave: el compilador hizo cumplir las restricciones de modo — no se necesitan comprobaciones en tiempo de ejecución.");
 }

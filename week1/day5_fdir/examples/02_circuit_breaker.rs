@@ -1,19 +1,20 @@
-//! Example 02: Circuit Breaker
+//! Ejemplo 02: Disyuntor (Circuit Breaker)
 //!
-//! Problem: a remote component (sensor daemon, I2C device, network service) is failing.
-//! Naively retrying hammers the failing component and wastes CPU. Worse, if each call
-//! blocks for a timeout before failing, a saturated call loop can starve other tasks.
+//! Problema: un componente remoto (demonio de sensor, dispositivo I2C, servicio de red) está
+//! fallando. Reintentar ingenuamente martillea el componente fallido y desperdicia CPU. Peor
+//! aún, si cada llamada se bloquea durante un timeout antes de fallar, un bucle de llamadas
+//! saturado puede privar de recursos a otras tareas.
 //!
-//! The circuit breaker pattern — borrowed from electrical engineering and popularised
-//! by Michael Nygard ("Release It!") — solves this:
-//!   CLOSED  → normal operation, failures increment counter
-//!   OPEN    → fast-fail: don't even try, return error immediately
-//!   HALF-OPEN → probe: let one call through to see if recovery happened
+//! El patrón disyuntor — tomado de la ingeniería eléctrica y popularizado por Michael Nygard
+//! ("Release It!") — resuelve esto:
+//!   CERRADO  → operación normal, los fallos incrementan el contador
+//!   ABIERTO  → fallo rápido: ni siquiera intentar, devolver error inmediatamente
+//!   SEMI-ABIERTO → sondeo: dejar pasar una llamada para ver si se produjo la recuperación
 //!
-//! This is especially useful in embedded daemons that talk to hardware over I2C/SPI/UART,
-//! where a hung bus can block an entire read for seconds.
+//! Esto es especialmente útil en demonios embebidos que hablan con hardware por I2C/SPI/UART,
+//! donde un bus bloqueado puede bloquear una lectura entera durante segundos.
 //!
-//! Run: cargo run --example 02_circuit_breaker
+//! Ejecutar: cargo run --example 02_circuit_breaker
 
 use std::{
     future::Future,
@@ -28,23 +29,24 @@ use tokio::time::sleep;
 use tracing::{error, info, warn};
 
 // ---------------------------------------------------------------------------
-// State machine
+// Máquina de estados
 // ---------------------------------------------------------------------------
 
-/// The three states of the circuit breaker.
+/// Los tres estados del disyuntor.
 ///
-/// Why an enum rather than separate structs?  Here we need runtime state transitions
-/// driven by external events, so a plain enum is cleaner. Compare to the typestate
-/// pattern in 05_safe_state.rs where transitions are compile-time.
+/// ¿Por qué un enum en lugar de structs separados? Aquí necesitamos transiciones de estado
+/// en tiempo de ejecución impulsadas por eventos externos, por lo que un enum sencillo es
+/// más limpio. Comparar con el patrón typestate en 05_safe_state.rs donde las transiciones
+/// son en tiempo de compilación.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CircuitState {
-    /// Normal operation. Calls are forwarded. Failures increment the counter.
+    /// Operación normal. Las llamadas se reenvían. Los fallos incrementan el contador.
     Closed,
-    /// The circuit has tripped. Calls fail immediately without reaching the component.
-    /// After `recovery_timeout`, the breaker probes by moving to HalfOpen.
+    /// El circuito ha disparado. Las llamadas fallan inmediatamente sin llegar al componente.
+    /// Tras `recovery_timeout`, el disyuntor sondea moviéndose a HalfOpen.
     Open,
-    /// One probe call is allowed through.
-    /// Success → Closed (reset counter).  Failure → back to Open.
+    /// Se permite pasar una llamada de sondeo.
+    /// Éxito → Closed (reiniciar contador). Fallo → de vuelta a Open.
     HalfOpen,
 }
 
@@ -54,25 +56,25 @@ pub enum CircuitState {
 
 #[derive(thiserror::Error, Debug)]
 pub enum CircuitBreakerError<E: std::fmt::Debug> {
-    /// The underlying call returned an error.
-    #[error("call failed: {0:?}")]
+    /// La llamada subyacente devolvió un error.
+    #[error("llamada fallida: {0:?}")]
     CallFailed(E),
-    /// The circuit is open; call was rejected without trying.
-    #[error("circuit open — fast-fail")]
+    /// El circuito está abierto; la llamada fue rechazada sin intentarlo.
+    #[error("circuito abierto — fallo rápido")]
     CircuitOpen,
 }
 
-/// A circuit breaker that wraps async calls to a potentially-failing resource.
+/// Un disyuntor que envuelve llamadas asíncronas a un recurso potencialmente fallido.
 pub struct CircuitBreaker {
     state: Arc<Mutex<CircuitState>>,
     failure_count: Arc<AtomicU32>,
-    /// How many consecutive failures before we trip to Open.
+    /// Cuántos fallos consecutivos antes de disparar a Open.
     threshold: u32,
-    /// How long to stay Open before probing.
+    /// Cuánto tiempo permanecer en Open antes de sondear.
     recovery_timeout: Duration,
-    /// When did we last transition to Open? Used to check if timeout elapsed.
+    /// ¿Cuándo fue la última transición a Open? Se usa para comprobar si el timeout transcurrió.
     last_failure_time: Arc<Mutex<Option<Instant>>>,
-    /// Name, for logging.
+    /// Nombre, para el registro de logs.
     name: String,
 }
 
@@ -88,27 +90,27 @@ impl CircuitBreaker {
         }
     }
 
-    /// Wrap an async call with circuit-breaker logic.
+    /// Envolver una llamada asíncrona con la lógica del disyuntor.
     ///
-    /// `f` produces a Future that represents one attempt to call the resource.
-    /// Returns `Ok(T)` on success, or a `CircuitBreakerError` on failure/trip.
+    /// `f` produce un Future que representa un intento de llamar al recurso.
+    /// Devuelve `Ok(T)` en caso de éxito, o un `CircuitBreakerError` en fallo/disparo.
     pub async fn call<F, Fut, T, E>(&self, f: F) -> Result<T, CircuitBreakerError<E>>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, E>>,
         E: std::fmt::Debug,
     {
-        // --- Pre-call: decide whether to allow the call through ---
+        // --- Pre-llamada: decidir si se permite pasar la llamada ---
         let current_state = {
             let mut state = self.state.lock().unwrap();
 
-            // If we're Open, check whether the recovery timeout has elapsed.
+            // Si estamos en Open, comprobar si el timeout de recuperación ha transcurrido.
             if *state == CircuitState::Open {
                 let last_fail = self.last_failure_time.lock().unwrap();
                 if let Some(t) = *last_fail {
                     if t.elapsed() >= self.recovery_timeout {
-                        // Enough time has passed; let one probe through.
-                        info!(cb = %self.name, "moving OPEN → HALF-OPEN (probing)");
+                        // Ha transcurrido suficiente tiempo; dejar pasar un sondeo.
+                        info!(cb = %self.name, "moviendo OPEN → HALF-OPEN (sondeando)");
                         *state = CircuitState::HalfOpen;
                     }
                 }
@@ -119,27 +121,27 @@ impl CircuitBreaker {
 
         match current_state {
             CircuitState::Open => {
-                // Fast-fail: don't call the underlying function at all.
-                warn!(cb = %self.name, "circuit OPEN — rejecting call");
+                // Fallo rápido: no llamar a la función subyacente en absoluto.
+                warn!(cb = %self.name, "circuito ABIERTO — rechazando llamada");
                 return Err(CircuitBreakerError::CircuitOpen);
             }
             CircuitState::Closed | CircuitState::HalfOpen => {
-                // Fall through to the actual call.
+                // Continuar hacia la llamada real.
             }
         }
 
-        // --- Perform the call ---
+        // --- Realizar la llamada ---
         let result = f().await;
 
-        // --- Post-call: update state based on outcome ---
+        // --- Post-llamada: actualizar el estado según el resultado ---
         match &result {
             Ok(_) => {
                 let old_failures = self.failure_count.swap(0, Ordering::SeqCst);
                 let mut state = self.state.lock().unwrap();
                 if *state == CircuitState::HalfOpen {
-                    info!(cb = %self.name, "probe succeeded — moving HALF-OPEN → CLOSED");
+                    info!(cb = %self.name, "sondeo exitoso — moviendo HALF-OPEN → CLOSED");
                 } else if old_failures > 0 {
-                    info!(cb = %self.name, failures_cleared = old_failures, "call succeeded, failures reset");
+                    info!(cb = %self.name, fallos_eliminados = old_failures, "llamada exitosa, fallos reiniciados");
                 }
                 *state = CircuitState::Closed;
             }
@@ -147,15 +149,15 @@ impl CircuitBreaker {
                 let new_count = self.failure_count.fetch_add(1, Ordering::SeqCst) + 1;
                 warn!(
                     cb = %self.name,
-                    failure_count = new_count,
-                    threshold = self.threshold,
+                    contador_fallos = new_count,
+                    umbral = self.threshold,
                     error = ?e,
-                    "call failed"
+                    "llamada fallida"
                 );
 
                 let mut state = self.state.lock().unwrap();
                 if *state == CircuitState::HalfOpen || new_count >= self.threshold {
-                    error!(cb = %self.name, "tripping circuit OPEN");
+                    error!(cb = %self.name, "disparando circuito ABIERTO");
                     *state = CircuitState::Open;
                     *self.last_failure_time.lock().unwrap() = Some(Instant::now());
                 }
@@ -165,20 +167,20 @@ impl CircuitBreaker {
         result.map_err(CircuitBreakerError::CallFailed)
     }
 
-    /// Current state — useful for health reporting.
+    /// Estado actual — útil para informes de salud.
     pub fn state(&self) -> CircuitState {
         self.state.lock().unwrap().clone()
     }
 }
 
 // ---------------------------------------------------------------------------
-// Simulated unreliable sensor daemon
+// Sensor simulado poco fiable
 // ---------------------------------------------------------------------------
 
-/// Simulates a sensor that fails randomly.
+/// Simula un sensor que falla aleatoriamente.
 ///
-/// In real life this would be a Unix socket call to the sensor daemon (day 4 pattern).
-/// We keep it simple here to focus on the circuit breaker logic.
+/// En la vida real esto sería una llamada a socket Unix al demonio de sensor (patrón del día 4).
+/// Lo mantenemos simple aquí para centrarnos en la lógica del disyuntor.
 struct UnreliableSensor {
     fail_count: std::cell::Cell<u32>,
 }
@@ -193,19 +195,19 @@ impl UnreliableSensor {
         }
     }
 
-    /// Returns Ok(temperature) some of the time, Err on consecutive failures.
+    /// Devuelve Ok(temperatura) algunas veces, Err en fallos consecutivos.
     async fn read_temperature(&self) -> Result<f32, SensorError> {
-        // Simulate I2C latency.
+        // Simular latencia I2C.
         sleep(Duration::from_millis(50)).await;
 
         let n = self.fail_count.get();
         self.fail_count.set(n + 1);
 
-        // Fail for the first 7 calls, then recover.
+        // Falla en las primeras 7 llamadas, luego se recupera.
         if n < 7 {
-            Err(SensorError(format!("I2C NAK on attempt {}", n)))
+            Err(SensorError(format!("I2C NAK en intento {}", n)))
         } else {
-            Ok(23.5 + n as f32 * 0.1) // plausible temperature reading
+            Ok(23.5 + n as f32 * 0.1) // lectura de temperatura plausible
         }
     }
 }
@@ -220,29 +222,29 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    info!("=== Day 5: Circuit Breaker Demo ===");
+    info!("=== Día 5: Demo de Disyuntor ===");
 
-    // threshold=3: trip after 3 consecutive failures.
-    // recovery_timeout=1s: probe after 1 second in Open state.
+    // threshold=3: disparar tras 3 fallos consecutivos.
+    // recovery_timeout=1s: sondear tras 1 segundo en estado Open.
     let cb = CircuitBreaker::new("temperature-sensor", 3, Duration::from_secs(1));
     let sensor = UnreliableSensor::new();
 
     for i in 0..20 {
-        // Space calls out to give the recovery timeout time to tick.
+        // Espaciar las llamadas para darle tiempo al timeout de recuperación.
         sleep(Duration::from_millis(300)).await;
 
         let result = cb.call(|| sensor.read_temperature()).await;
         match result {
-            Ok(temp) => info!(attempt = i, temp_c = temp, state = ?cb.state(), "read OK"),
+            Ok(temp) => info!(intento = i, temp_c = temp, estado = ?cb.state(), "lectura OK"),
             Err(CircuitBreakerError::CircuitOpen) => {
-                warn!(attempt = i, "call rejected by open circuit (fast-fail)");
+                warn!(intento = i, "llamada rechazada por circuito abierto (fallo rápido)");
             }
             Err(CircuitBreakerError::CallFailed(e)) => {
-                error!(attempt = i, error = ?e, "call reached sensor but failed");
+                error!(intento = i, error = ?e, "la llamada llegó al sensor pero falló");
             }
         }
     }
 
-    info!(final_state = ?cb.state(), "Demo complete");
-    info!("Observe: after 3 failures the circuit opened; calls were rejected until the 1s timeout; then one probe succeeded and the circuit closed again.");
+    info!(estado_final = ?cb.state(), "Demo completada");
+    info!("Observar: tras 3 fallos el circuito se abrió; las llamadas fueron rechazadas hasta el timeout de 1s; luego un sondeo tuvo éxito y el circuito se cerró de nuevo.");
 }

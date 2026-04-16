@@ -1,19 +1,19 @@
-//! Example 05 — Privilege separation architecture
+//! Ejemplo 05 — Arquitectura de separación de privilegios
 //!
-//! The security boundary is between tc_receiver (untrusted side, talks to
-//! the network/RF interface) and obc_router (trusted side, talks to hardware).
+//! La frontera de seguridad está entre tc_receiver (lado no confiable, habla con
+//! la interfaz de red/RF) y obc_router (lado confiable, habla con el hardware).
 //!
-//! tc_receiver has NO access to actuators.  Even if it's compromised, it can
-//! only send bytes to the router — which then applies its own validation.
+//! tc_receiver NO tiene acceso a los actuadores. Aunque sea comprometido, solo puede
+//! enviar bytes al router — que luego aplica su propia validación.
 //!
-//! This example shows the design as in-process tasks communicating via a
-//! channel (in the full week2_project it's separate processes via Unix sockets).
+//! Este ejemplo muestra el diseño como tareas en el mismo proceso que se comunican mediante un
+//! canal (en el week2_project completo son procesos separados mediante sockets Unix).
 //!
-//! Run with:  cargo run --example 05_privilege_separation
+//! Ejecutar con:  cargo run --example 05_privilege_separation
 
 use tokio::sync::mpsc;
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Tipos ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
 struct VerifiedTc {
@@ -23,21 +23,21 @@ struct VerifiedTc {
     data: Vec<u8>,
 }
 
-// ── Untrusted side: TC Receiver ───────────────────────────────────────────────
+// ── Lado no confiable: receptor TC ───────────────────────────────────────────
 
-/// Receives raw bytes from the "network", authenticates them, forwards only
-/// valid TCs to the trusted router.
+/// Recibe bytes crudos de la "red", los autentica y reenvía solo
+/// los TCs válidos al router confiable.
 ///
-/// This component has NO knowledge of actuators or subsystems.
-/// Its only capability: send bytes to `tx`.
+/// Este componente NO tiene conocimiento de actuadores ni subsistemas.
+/// Su única capacidad: enviar bytes a `tx`.
 async fn tc_receiver(tx: mpsc::Sender<VerifiedTc>) {
-    // Simulate receiving 5 "TC bytes" from the uplink
+    // Simular la recepción de 5 "bytes TC" del enlace ascendente
     let simulated_uplink: Vec<(bool, u16, u8, u8)> = vec![
-        (true,  0x001, 17, 1),  // valid TC(17,1) ping
-        (false, 0x001, 17, 1),  // bad HMAC — rejected
-        (true,  0x003,  3, 129),// valid TC(3,129) HK request
-        (true,  0x003,  3, 129),// replay of previous — rejected by replay window
-        (true,  0x001, 17, 1),  // valid ping
+        (true,  0x001, 17, 1),  // TC(17,1) ping válido
+        (false, 0x001, 17, 1),  // HMAC incorrecto — rechazado
+        (true,  0x003,  3, 129),// TC(3,129) petición HK válida
+        (true,  0x003,  3, 129),// repetición del anterior — rechazado por ventana de repetición
+        (true,  0x001, 17, 1),  // ping válido
     ];
 
     let mut seq: u16 = 0;
@@ -45,58 +45,58 @@ async fn tc_receiver(tx: mpsc::Sender<VerifiedTc>) {
 
     for (valid_hmac, apid, svc, sub) in simulated_uplink {
         seq += 1;
-        println!("[tc_receiver] incoming: APID=0x{apid:03X} svc={svc}/{sub} seq={seq}");
+        println!("[tc_receiver] entrante: APID=0x{apid:03X} svc={svc}/{sub} seq={seq}");
 
-        // Step 1: verify HMAC
+        // Paso 1: verificar HMAC
         if !valid_hmac {
-            println!("[tc_receiver] REJECTED: bad HMAC");
+            println!("[tc_receiver] RECHAZADO: HMAC incorrecto");
             continue;
         }
 
-        // Step 2: replay check (simplified: reject same apid+svc+sub in a row)
+        // Paso 2: verificación de repetición (simplificado: rechazar mismo apid+svc+sub consecutivo)
         let is_replay = last_accepted_seq == Some(seq.wrapping_sub(0));
         if is_replay {
-            println!("[tc_receiver] REJECTED: replay detected");
+            println!("[tc_receiver] RECHAZADO: repetición detectada");
             continue;
         }
 
         last_accepted_seq = Some(seq);
-        println!("[tc_receiver] FORWARDING to router (verified)");
+        println!("[tc_receiver] REENVIANDO al router (verificado)");
         let tc = VerifiedTc { apid, service: svc, subservice: sub, data: vec![] };
         if tx.send(tc).await.is_err() { break; }
     }
-    // Dropping tx signals to the router that uplink is closed
+    // Soltar tx señala al router que el enlace ascendente está cerrado
 }
 
-// ── Trusted side: OBC Router ──────────────────────────────────────────────────
+// ── Lado confiable: router OBC ────────────────────────────────────────────────
 
-/// Receives ONLY verified TCs from tc_receiver.
-/// This component HAS access to subsystems and actuators.
+/// Recibe SOLO TCs verificados de tc_receiver.
+/// Este componente SÍ tiene acceso a subsistemas y actuadores.
 async fn obc_router(mut rx: mpsc::Receiver<VerifiedTc>) {
     while let Some(tc) = rx.recv().await {
-        println!("[obc_router] routing verified TC({}/{}) APID=0x{:03X}",
+        println!("[obc_router] enrutando TC verificado({}/{}) APID=0x{:03X}",
                  tc.service, tc.subservice, tc.apid);
         match tc.service {
-            17 => println!("[obc_router] → ping response: TM(17,2) I Am Alive"),
-            3  => println!("[obc_router] → HK service: collect parameters, send TM(3,25)"),
-            _  => println!("[obc_router] → unknown service, discarding"),
+            17 => println!("[obc_router] → respuesta ping: TM(17,2) Estoy Vivo"),
+            3  => println!("[obc_router] → servicio HK: recopilar parámetros, enviar TM(3,25)"),
+            _  => println!("[obc_router] → servicio desconocido, descartando"),
         }
     }
-    println!("[obc_router] uplink closed");
+    println!("[obc_router] enlace ascendente cerrado");
 }
 
 #[tokio::main]
 async fn main() {
-    println!("=== Privilege Separation Architecture ===\n");
-    println!("Security boundary: tc_receiver ──(channel)──► obc_router");
-    println!("  tc_receiver: knows authentication keys, talks to RF hardware");
-    println!("  obc_router:  knows spacecraft subsystems, talks to actuators");
-    println!("  Compromise of tc_receiver CANNOT directly command actuators.\n");
+    println!("=== Arquitectura de separación de privilegios ===\n");
+    println!("Frontera de seguridad: tc_receiver ──(canal)──► obc_router");
+    println!("  tc_receiver: conoce las claves de autenticación, habla con el hardware RF");
+    println!("  obc_router:  conoce los subsistemas de la nave, habla con los actuadores");
+    println!("  Comprometer tc_receiver NO puede comandar actuadores directamente.\n");
 
     let (tx, rx) = mpsc::channel(16);
     let receiver = tokio::spawn(tc_receiver(tx));
     let router   = tokio::spawn(obc_router(rx));
 
     let _ = tokio::join!(receiver, router);
-    println!("\nSimulation complete.");
+    println!("\nSimulación completa.");
 }

@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution: Heartbeat task with cancellation
+//! Ejercicio 1 — Solución: Tarea heartbeat con cancelación
 
 #![allow(dead_code)]
 
@@ -28,14 +28,14 @@ pub async fn heartbeat_task(
     loop {
         tokio::select! {
             _ = token.cancelled() => {
-                // Shutdown requested — exit cleanly
+                // Apagado solicitado — salir limpiamente
                 break;
             }
             _ = tokio::time::sleep(interval) => {
                 sequence += 1;
                 let msg = HeartbeatMsg { sequence, timestamp: Instant::now() };
                 if tx.send(msg).await.is_err() {
-                    // Receiver dropped — no point continuing
+                    // Receptor descartado — no tiene sentido continuar
                     break;
                 }
             }
@@ -52,26 +52,26 @@ async fn heartbeat_sends_three_then_cancels() {
 
     tokio::spawn(heartbeat_task(config, tx, child));
 
-    // Receive exactly 3 heartbeats
+    // Recibir exactamente 3 heartbeats
     for expected_seq in 1..=3u32 {
         let msg = tokio::time::timeout(
             Duration::from_millis(500),
             rx.recv(),
         )
         .await
-        .expect("timed out")
-        .expect("channel closed");
+        .expect("timeout")
+        .expect("canal cerrado");
         assert_eq!(msg.sequence, expected_seq);
     }
 
-    // Cancel and verify no more arrive within 200ms
+    // Cancelar y verificar que no llegan más dentro de 200ms
     token.cancel();
     let result = tokio::time::timeout(Duration::from_millis(200), rx.recv()).await;
-    // Either timeout (Ok(Err(..)) or the channel closed — both mean no more heartbeats
+    // Timeout (Ok(Err(..)) o canal cerrado — ambos significan que no hay más heartbeats
     assert!(result.is_err() || result.unwrap().is_none());
 }
 
 #[tokio::main]
 async fn main() {
-    println!("Run tests with: cargo test --example ex1_heartbeat_sol");
+    println!("Ejecutar pruebas con: cargo test --example ex1_heartbeat_sol");
 }

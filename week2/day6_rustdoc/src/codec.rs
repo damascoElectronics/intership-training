@@ -1,33 +1,33 @@
-//! Byte-level encode/decode for [`CcsdsPrimaryHeader`].
+//! Codificación/decodificación a nivel de bytes para [`CcsdsPrimaryHeader`].
 //!
-//! These functions form the boundary between the typed Rust world and the
-//! raw byte buffers used by DMA controllers and network drivers. They are
-//! kept intentionally thin: no allocation, no I/O, no dependencies.
+//! Estas funciones forman el límite entre el mundo tipado de Rust y los
+//! buffers de bytes crudos usados por los controladores DMA y los drivers de red. Se
+//! mantienen intencionalmente delgadas: sin asignación, sin E/S, sin dependencias.
 //!
-//! ## Why a Separate Module?
+//! ## ¿Por qué un Módulo Separado?
 //!
-//! Separating serialisation from the domain type follows the *Single
-//! Responsibility Principle*: [`crate::frame::CcsdsPrimaryHeader`] knows about
-//! header fields; this module knows about wire format. If CCSDS ever adds a
-//! version-2 header format, only `codec.rs` needs to change.
+//! Separar la serialización del tipo de dominio sigue el *Principio de
+//! Responsabilidad Única*: [`crate::frame::CcsdsPrimaryHeader`] sabe sobre
+//! los campos de la cabecera; este módulo sabe sobre el formato del cable. Si CCSDS
+//! alguna vez añade un formato de cabecera versión 2, solo `codec.rs` necesita cambiar.
 
 use crate::error::CcsdsError;
 use crate::frame::CcsdsPrimaryHeader;
 
-/// Encodes a [`CcsdsPrimaryHeader`] into a 6-byte big-endian array.
+/// Codifica un [`CcsdsPrimaryHeader`] en un array big-endian de 6 bytes.
 ///
-/// The output is suitable for direct transmission: it can be written into a
-/// DMA buffer, serialised into a UART frame, or prepended to a UDP payload.
+/// La salida es adecuada para transmisión directa: puede escribirse en un
+/// buffer DMA, serializarse en una trama UART, o anteponerse a un payload UDP.
 ///
-/// This function is infallible because a [`CcsdsPrimaryHeader`] in memory is
-/// always valid by construction (the constructors enforce the invariants).
+/// Esta función es infalible porque un [`CcsdsPrimaryHeader`] en memoria es
+/// siempre válido por construcción (los constructores imponen las invariantes).
 ///
-/// # Performance
+/// # Rendimiento
 ///
-/// This is a 6-byte copy. No allocation occurs. The function inlines
-/// to essentially a `memcpy` on release builds.
+/// Esto es una copia de 6 bytes. No ocurre ninguna asignación. La función se expande en línea
+/// esencialmente a un `memcpy` en compilaciones de lanzamiento.
 ///
-/// # Examples
+/// # Ejemplos
 ///
 /// ```rust
 /// use day6_rustdoc::frame::CcsdsPrimaryHeader;
@@ -37,39 +37,39 @@ use crate::frame::CcsdsPrimaryHeader;
 /// let bytes = encode(&hdr);
 /// assert_eq!(bytes.len(), 6);
 ///
-/// // The encoded bytes can be decoded back to an equivalent header.
+/// // Los bytes codificados pueden decodificarse de vuelta a una cabecera equivalente.
 /// let decoded = decode(&bytes)?;
 /// assert_eq!(decoded.apid(), 0x42);
 /// assert_eq!(decoded.seq_count(), 7);
 /// # Ok::<(), day6_rustdoc::error::CcsdsError>(())
 /// ```
 pub fn encode(hdr: &CcsdsPrimaryHeader) -> [u8; 6] {
-    // Delegate to the header's own to_bytes() so there is exactly one place
-    // where the raw byte layout is authoritative.
+    // Delegar al propio to_bytes() de la cabecera para que haya exactamente un lugar
+    // donde el diseño de bytes crudos sea autoritativo.
     hdr.to_bytes()
 }
 
-/// Decodes a 6-byte array into a [`CcsdsPrimaryHeader`].
+/// Decodifica un array de 6 bytes en un [`CcsdsPrimaryHeader`].
 ///
-/// Validates the version field and APID. Returns an error if the bytes do not
-/// represent a well-formed CCSDS primary header.
+/// Valida el campo de versión y el APID. Devuelve un error si los bytes no
+/// representan una cabecera primaria CCSDS bien formada.
 ///
-/// # Arguments
+/// # Argumentos
 ///
-/// - `bytes`: Exactly 6 bytes in CCSDS big-endian wire order.
+/// - `bytes`: Exactamente 6 bytes en orden big-endian del cable CCSDS.
 ///
-/// # Errors
+/// # Errores
 ///
-/// - [`CcsdsError::UnsupportedVersion`] if bits \[15:13\] of byte 0 are non-zero.
-/// - [`CcsdsError::InvalidApid`] if bits \[10:0\] of bytes 0–1 equal `0x7FF`.
+/// - [`CcsdsError::UnsupportedVersion`] si los bits \[15:13\] del byte 0 son distintos de cero.
+/// - [`CcsdsError::InvalidApid`] si los bits \[10:0\] de los bytes 0–1 son iguales a `0x7FF`.
 ///
-/// # Examples
+/// # Ejemplos
 ///
 /// ```rust
 /// use day6_rustdoc::frame::CcsdsPrimaryHeader;
 /// use day6_rustdoc::codec::{encode, decode};
 ///
-/// // Build → encode → decode round-trip.
+/// // Ida y vuelta: construir → codificar → decodificar.
 /// let original = CcsdsPrimaryHeader::new_tm(0x10, 3, 64)?;
 /// let bytes = encode(&original);
 /// let recovered = decode(&bytes)?;
@@ -77,36 +77,36 @@ pub fn encode(hdr: &CcsdsPrimaryHeader) -> [u8; 6] {
 /// # Ok::<(), day6_rustdoc::error::CcsdsError>(())
 /// ```
 ///
-/// Handling a corrupt buffer:
+/// Manejando un buffer corrupto:
 ///
 /// ```rust
 /// use day6_rustdoc::codec::decode;
 /// use day6_rustdoc::error::CcsdsError;
 ///
-/// // First byte 0x20 = version bits 001 — not 000 as required.
+/// // Primer byte 0x20 = bits de versión 001 — no 000 como se requiere.
 /// let bad_bytes = [0x20, 0x00, 0xC0, 0x00, 0x00, 0x03];
 /// match decode(&bad_bytes) {
 ///     Err(CcsdsError::UnsupportedVersion { version }) => {
-///         println!("Rejected corrupt header: version={}", version);
+///         println!("Cabecera corrupta rechazada: versión={}", version);
 ///     }
-///     other => panic!("unexpected result: {:?}", other),
+///     other => panic!("resultado inesperado: {:?}", other),
 /// }
 /// ```
 pub fn decode(bytes: &[u8; 6]) -> Result<CcsdsPrimaryHeader, CcsdsError> {
     CcsdsPrimaryHeader::from_bytes(*bytes)
 }
 
-/// Decodes a primary header from a byte slice, checking the length first.
+/// Decodifica una cabecera primaria de un slice de bytes, verificando la longitud primero.
 ///
-/// This is a convenience wrapper around [`decode`] for situations where the
-/// input size is not statically known (e.g., reading from a socket buffer).
+/// Este es un envoltorio de conveniencia alrededor de [`decode`] para situaciones donde el
+/// tamaño de entrada no se conoce estáticamente (por ejemplo, al leer de un buffer de socket).
 ///
-/// # Errors
+/// # Errores
 ///
-/// - [`CcsdsError::BufferTooShort`] if `bytes.len() < 6`.
-/// - All errors from [`decode`].
+/// - [`CcsdsError::BufferTooShort`] si `bytes.len() < 6`.
+/// - Todos los errores de [`decode`].
 ///
-/// # Examples
+/// # Ejemplos
 ///
 /// ```rust
 /// use day6_rustdoc::codec::decode_slice;
@@ -118,7 +118,7 @@ pub fn decode(bytes: &[u8; 6]) -> Result<CcsdsPrimaryHeader, CcsdsError> {
 ///         assert_eq!(got, 2);
 ///         assert_eq!(expected, 6);
 ///     }
-///     other => panic!("unexpected: {:?}", other),
+///     other => panic!("inesperado: {:?}", other),
 /// }
 /// ```
 pub fn decode_slice(bytes: &[u8]) -> Result<CcsdsPrimaryHeader, CcsdsError> {
@@ -128,8 +128,8 @@ pub fn decode_slice(bytes: &[u8]) -> Result<CcsdsPrimaryHeader, CcsdsError> {
             expected: 6,
         });
     }
-    // SAFETY: we just checked that bytes.len() >= 6.
-    let arr: [u8; 6] = bytes[..6].try_into().expect("slice is exactly 6 bytes");
+    // SAFETY: acabamos de verificar que bytes.len() >= 6.
+    let arr: [u8; 6] = bytes[..6].try_into().expect("el slice tiene exactamente 6 bytes");
     decode(&arr)
 }
 
@@ -151,7 +151,7 @@ mod tests {
         let short = [0u8; 4];
         match decode_slice(&short) {
             Err(CcsdsError::BufferTooShort { got: 4, expected: 6 }) => {}
-            other => panic!("unexpected: {:?}", other),
+            other => panic!("inesperado: {:?}", other),
         }
     }
 

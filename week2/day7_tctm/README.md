@@ -1,120 +1,120 @@
-# Day 7 — Telecommand & Telemetry (TC/TM)
+# Día 7 — Telecomando y Telemetría (TC/TM)
 
-**Theme:** CCSDS Space Packet Protocol and PUS-C — the language spacecraft speak.
+**Tema:** Protocolo de Space Packet CCSDS y PUS-C — el lenguaje que hablan las naves espaciales.
 
-Every byte that travels between a ground station and an on-board computer follows a defined
-standard. This day builds a working implementation of the packet formats you will encounter
-in the interview and on the job.
-
----
-
-## Learning Goals
-
-- Implement the 6-byte CCSDS primary header with correct bit manipulation
-- Compute and verify CRC-CCITT (polynomial 0x1021, init 0xFFFF)
-- Build PUS-C TC (telecommand) and TM (telemetry) packet structures
-- Route packets by APID to per-service handlers
-- Detect sequence counter gaps and 14-bit wrap-around
+Cada byte que viaja entre una estación terrestre y una computadora a bordo sigue un estándar definido.
+Este día construye una implementación funcional de los formatos de paquetes que encontrarás
+en la entrevista y en el trabajo.
 
 ---
 
-## Packet Structure (ASCII diagram)
+## Objetivos de Aprendizaje
+
+- Implementar la cabecera primaria CCSDS de 6 bytes con manipulación correcta de bits
+- Calcular y verificar CRC-CCITT (polinomio 0x1021, inicio 0xFFFF)
+- Construir estructuras de paquetes TC (telecomando) y TM (telemetría) PUS-C
+- Enrutar paquetes por APID a manejadores por servicio
+- Detectar brechas en el contador de secuencia y el desbordamiento de 14 bits en 0x3FFF
+
+---
+
+## Estructura del Paquete (diagrama ASCII)
 
 ```
-CCSDS Primary Header (6 bytes, mandatory for all Space Packets):
+Cabecera Primaria CCSDS (6 bytes, obligatoria para todos los Space Packets):
 
  Bit: 0         1         2         3         4         5
       0123456789012345678901234567890123456789012345678901234567
-      │ Version │T│SH│   APID (11 bits)   │SF│   Seq Count    │   Pkt Data Len  │
-      │  (3b)   │C│  │                    │(2│   (14 bits)    │   (16 bits)     │
-      └─────────┴─┴──┴────────────────────┴──┴────────────────┴─────────────────┘
+      │ Versión │T│SH│   APID (11 bits)   │SF│   Conteo Sec.  │   Long. Datos Pkt  │
+      │  (3b)   │C│  │                    │(2│   (14 bits)    │   (16 bits)        │
+      └─────────┴─┴──┴────────────────────┴──┴────────────────┴────────────────────┘
 
-T  = Packet Type: 0=TM, 1=TC
-SH = Secondary Header Flag: 1=present
-SF = Sequence Flags: 11=standalone, 01=first, 00=continuation, 10=last
-Pkt Data Len = (total_packet_length - 7), i.e. bytes after primary header minus 1
+T  = Tipo de Paquete: 0=TM, 1=TC
+SH = Indicador de Cabecera Secundaria: 1=presente
+SF = Indicadores de Secuencia: 11=independiente, 01=primero, 00=continuación, 10=último
+Long. Datos Pkt = (longitud_total_paquete - 7), es decir, bytes después de la cabecera primaria menos 1
 ```
 
 ---
 
-## The `spacepacket` Library
+## La Biblioteca `spacepacket`
 
-All packet types are implemented in the `spacepacket` sub-crate:
+Todos los tipos de paquetes están implementados en el sub-crate `spacepacket`:
 
 ```
 spacepacket/src/
-├── lib.rs              re-exports + module docs
+├── lib.rs              re-exportaciones + docs del módulo
 ├── primary_header.rs   CcsdsPrimaryHeader, PacketType, SeqFlags
 ├── crc.rs              crc_ccitt(), append_crc(), verify_and_strip_crc()
-├── pus_tc.rs           PusTelecommand (5-byte secondary header)
-├── pus_tm.rs           PusTelemetry  (10-byte secondary header + OBT)
+├── pus_tc.rs           PusTelecommand (cabecera secundaria de 5 bytes)
+├── pus_tm.rs           PusTelemetry  (cabecera secundaria de 10 bytes + OBT)
 ├── apid_router.rs      ApidRouter, route_packet()
-└── error.rs            PacketError enum
+└── error.rs            enum PacketError
 ```
 
 ---
 
-## Examples
+## Ejemplos
 
-| File | What it demonstrates |
-|------|----------------------|
-| `01_build_tc.rs` | Build TC(17,1) ping, print byte-by-byte field breakdown |
-| `02_parse_tm.rs` | Build and parse TM(3,25) housekeeping with fake sensor data |
-| `03_route_packets.rs` | Route 12 packets across 4 APIDs to per-service threads |
-| `04_sequence_counter.rs` | Gap detection, per-APID counters, 14-bit wrap at 0x3FFF |
+| Archivo | Lo que demuestra |
+|---------|-----------------|
+| `01_build_tc.rs` | Construir TC(17,1) ping, imprimir desglose campo por campo |
+| `02_parse_tm.rs` | Construir y analizar TM(3,25) housekeeping con datos de sensor falsos |
+| `03_route_packets.rs` | Enrutar 12 paquetes por 4 APIDs a hilos por servicio |
+| `04_sequence_counter.rs` | Detección de brechas, contadores por APID, desbordamiento de 14 bits en 0x3FFF |
 
-Run an example:
+Ejecutar un ejemplo:
 ```
 cargo run -p day7-tctm --example 01_build_tc
 ```
 
 ---
 
-## Exercises
+## Ejercicios
 
-### Exercise 1 — HK Service (`ex1_hk_service.rs`)
+### Ejercicio 1 — Servicio HK (`ex1_hk_service.rs`)
 
-Implement a `HkService` that:
+Implementa un `HkService` que:
 
-1. Accepts `register_parameter(id: u16, name: &str)` calls at startup
-2. Accepts `update_parameter(id: u16, value: f32)` calls from sensors
-3. Produces a `PusTelemetry` (service 3, subservice 25) via `build_report(apid, seq)`
+1. Acepta llamadas `register_parameter(id: u16, name: &str)` en el inicio
+2. Acepta llamadas `update_parameter(id: u16, value: f32)` de los sensores
+3. Produce un `PusTelemetry` (servicio 3, subservicio 25) mediante `build_report(apid, seq)`
 
-The report encodes all registered parameters as `[id: u16 LE][value: f32 LE]` pairs in the
-application data field.
+El informe codifica todos los parámetros registrados como pares `[id: u16 LE][value: f32 LE]` en el
+campo de datos de aplicación.
 
-Solution: `ex1_hk_service_sol.rs`
+Solución: `ex1_hk_service_sol.rs`
 
 ---
 
-## Key Concepts
+## Conceptos Clave
 
-### APID allocation
+### Asignación de APID
 
-APIDs 0x000–0x7FF are user-defined per mission. A typical allocation:
+Los APIDs 0x000–0x7FF son definidos por el usuario por misión. Una asignación típica:
 
-| APID | Service |
+| APID | Servicio |
 |------|---------|
-| 0x001 | TC Verification (service 1) |
-| 0x002 | Housekeeping (service 3) |
-| 0x003 | Event Reporting (service 5) |
-| 0x100–0x1FF | Payload subsystems |
-| 0x7FF | Broadcast (no specific destination) |
+| 0x001 | Verificación TC (servicio 1) |
+| 0x002 | Housekeeping (servicio 3) |
+| 0x003 | Reporte de Eventos (servicio 5) |
+| 0x100–0x1FF | Subsistemas de carga útil |
+| 0x7FF | Difusión (sin destino específico) |
 
 ### CRC-CCITT
 
-The standard PUS-C error-detection code. Every TC and TM packet ends with a 2-byte CRC.
-The receiver recomputes the CRC over bytes 0..(N-2) and compares with bytes (N-2)..(N).
+El código de detección de errores estándar de PUS-C. Cada paquete TC y TM termina con un CRC de 2 bytes.
+El receptor recalcula el CRC sobre los bytes 0..(N-2) y compara con los bytes (N-2)..(N).
 
-Test vector: `crc_ccitt(b"123456789")` == `0x29B1`
+Vector de prueba: `crc_ccitt(b"123456789")` == `0x29B1`
 
-### Packet Data Length field
+### Campo Longitud de Datos del Paquete
 
-Confusingly named — it is the number of octets in the Packet Data Field *minus one*,
-not the total packet length. So a 10-byte data field → PDL = 9. Total packet = 6 + PDL + 1.
+Con nombre confuso — es el número de octetos en el Campo de Datos del Paquete *menos uno*,
+no la longitud total del paquete. Entonces un campo de datos de 10 bytes → PDL = 9. Paquete total = 6 + PDL + 1.
 
-### OBT (On-Board Time)
+### OBT (Tiempo a Bordo)
 
-PUS-C TM secondary headers include a timestamp. The standard format is CCSDS CUC:
-- 4 bytes coarse time (integer seconds since epoch)
-- 2 bytes fine time (sub-second, units of 2⁻¹⁶ seconds ≈ 15 µs resolution)
+Las cabeceras secundarias de TM PUS-C incluyen una marca de tiempo. El formato estándar es CCSDS CUC:
+- 4 bytes de tiempo grueso (segundos enteros desde la época)
+- 2 bytes de tiempo fino (sub-segundo, unidades de 2⁻¹⁶ segundos ≈ resolución de 15 µs)
