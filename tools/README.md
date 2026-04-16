@@ -1,53 +1,53 @@
-# Tools
+# Herramientas
 
-Helper scripts for working with the training workspace.
+Scripts de utilidad para trabajar con el workspace de entrenamiento.
 
 ---
 
 ## `run_obc_stack.sh`
 
-Starts the full Week 2 OBC stack in one command.
+Inicia la pila OBC completa de la Semana 2 con un solo comando.
 
 ```bash
 bash tools/run_obc_stack.sh
 ```
 
-**What it does:**
-1. Runs `cargo build --workspace -q` to ensure all binaries are up to date
-2. Launches `tc-receiver`, `obc-router`, `hk-service`, and `sensor-daemon` in the background
-3. Waits 1 second for daemons to bind their sockets
-4. Runs `ground-sim` as the test harness
-5. On exit (Ctrl+C or `ground-sim` completion), kills all background processes and removes socket files
+**Qué hace:**
+1. Ejecuta `cargo build --workspace -q` para asegurarse de que todos los binarios estén actualizados
+2. Lanza `tc-receiver`, `obc-router`, `hk-service` y `sensor-daemon` en segundo plano
+3. Espera 1 segundo para que los demonios vinculen sus sockets
+4. Ejecuta `ground-sim` como arnés de prueba
+5. Al salir (Ctrl+C o al completarse `ground-sim`), termina todos los procesos en segundo plano y elimina los archivos de socket
 
-**Prerequisites:**
-- Must be run from the repo root or the `tools/` directory (the script `cd`s to the repo root)
-- Workspace must compile cleanly (`cargo build --workspace`)
+**Requisitos Previos:**
+- Debe ejecutarse desde la raíz del repositorio o desde el directorio `tools/` (el script hace `cd` a la raíz del repositorio)
+- El workspace debe compilar sin errores (`cargo build --workspace`)
 
 ---
 
 ## `check_workspace.sh`
 
-Runs all CI checks locally before pushing.
+Ejecuta todas las verificaciones de CI localmente antes de hacer push.
 
 ```bash
 bash tools/check_workspace.sh
 ```
 
-**What it checks (in order):**
-1. `cargo fmt --all -- --check` — formatting (matches CI)
-2. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — lints
-3. `cargo test --workspace --all-features` — all unit and integration tests
+**Qué verifica (en orden):**
+1. `cargo fmt --all -- --check` — formato (coincide con CI)
+2. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — advertencias de linting
+3. `cargo test --workspace --all-features` — todas las pruebas unitarias y de integración
 
-If any step fails the script exits immediately (`set -euo pipefail`).
+Si algún paso falla, el script termina inmediatamente (`set -euo pipefail`).
 
-**Tip:** run this before every `git push` to catch issues locally. The CI workflow
-(`.github/workflows/ci.yml`) runs exactly the same checks.
+**Consejo:** ejecutar este script antes de cada `git push` para detectar problemas localmente. El flujo de trabajo de CI
+(`.github/workflows/ci.yml`) ejecuta exactamente las mismas verificaciones.
 
 ---
 
-## Make the scripts executable
+## Hacer los scripts ejecutables
 
-If you get `Permission denied`:
+Si aparece el error `Permission denied`:
 ```bash
 chmod +x tools/run_obc_stack.sh tools/check_workspace.sh
 ```

@@ -1,290 +1,290 @@
-# Day 8: Security for Embedded Linux Daemons
+# Día 8: Seguridad para daemons Linux embebidos
 
-Spacecraft software runs on embedded Linux boards (e.g., a Raspberry Pi CM4 running
-PetaLinux) connected to RF uplink hardware. The threat environment is different from
-a corporate web server, but the principles are the same: **authenticate everything,
-trust nothing, give each component only the privileges it needs**.
-
----
-
-## Threat Model
-
-### Uplink Spoofing (TC Injection)
-
-A ground station transmits telecommands (TCs) over a radio link. Anyone within RF range
-can transmit on the same frequency. Without authentication, an attacker can:
-
-- Inject false telecommands (open a valve, disable a heater, switch off the OBC)
-- Replay a previously-captured valid command at an inconvenient time
-- Jam the link and substitute their own packets
-
-**Mitigation**: HMAC-SHA256 authentication on every TC packet. The key is loaded
-into the OBC before launch and never transmitted. Without the key, an attacker
-cannot forge a valid MAC.
-
-### Insider / Supply Chain Threats
-
-The spacecraft OBC may run third-party libraries (CCSDS parsers, protocol stacks).
-A malicious or buggy library should not be able to:
-
-- Access actuator driver file descriptors it was never given
-- Make arbitrary syscalls (e.g., `execve` to spawn a shell)
-- Escalate privileges
-
-**Mitigation**: Privilege separation (separate processes per function) + seccomp BPF
-(allowlist only the syscalls each process legitimately needs).
-
-### Memory Corruption
-
-Even in Rust, `unsafe` code can introduce memory-safety bugs. A buffer overflow in
-a C FFI call or an incorrect pointer cast can give an attacker control flow.
-
-**Mitigation**: Minimize `unsafe`, write `SAFETY` comments for every unsafe block,
-run Miri and AddressSanitizer in CI, fuzz parsers.
+El software de una nave espacial se ejecuta en tarjetas Linux embebidas (por ejemplo, una Raspberry Pi CM4 con
+PetaLinux) conectadas a hardware de enlace ascendente RF. El entorno de amenazas es diferente al de
+un servidor web corporativo, pero los principios son los mismos: **autenticar todo,
+no confiar en nada, darle a cada componente solo los privilegios que necesita**.
 
 ---
 
-## Defense-in-Depth Layers
+## Modelo de amenazas
+
+### Suplantación del enlace ascendente (inyección de TC)
+
+Una estación terrestre transmite telecomandos (TCs) por un enlace de radio. Cualquier persona dentro del alcance RF
+puede transmitir en la misma frecuencia. Sin autenticación, un atacante puede:
+
+- Inyectar telecomandos falsos (abrir una válvula, deshabilitar un calentador, apagar el OBC)
+- Reproducir un comando válido capturado anteriormente en un momento inoportuno
+- Interferir el enlace y sustituirlo con sus propios paquetes
+
+**Mitigación**: autenticación HMAC-SHA256 en cada paquete TC. La clave se carga
+en el OBC antes del lanzamiento y nunca se transmite. Sin la clave, un atacante
+no puede falsificar un MAC válido.
+
+### Amenazas internas / cadena de suministro
+
+El OBC de la nave espacial puede ejecutar bibliotecas de terceros (parsers CCSDS, pilas de protocolo).
+Una biblioteca maliciosa o con errores no debería poder:
+
+- Acceder a descriptores de fichero del driver de actuadores que nunca se le proporcionaron
+- Realizar syscalls arbitrarias (p. ej., `execve` para abrir una shell)
+- Escalar privilegios
+
+**Mitigación**: separación de privilegios (procesos separados por función) + seccomp BPF
+(lista de permisos con solo las syscalls que cada proceso necesita legítimamente).
+
+### Corrupción de memoria
+
+Incluso en Rust, el código `unsafe` puede introducir errores de seguridad de memoria. Un desbordamiento de búfer en
+una llamada FFI de C o un cast de puntero incorrecto puede darle a un atacante control del flujo.
+
+**Mitigación**: minimizar `unsafe`, escribir comentarios `SAFETY` para cada bloque unsafe,
+ejecutar Miri y AddressSanitizer en CI, fuzzear los parsers.
+
+---
+
+## Capas de defensa en profundidad
 
 ```
-Uplink (RF)
+Enlace ascendente (RF)
     │
     ▼
-[RF Receiver] ─── raw bytes ──► [tc_receiver daemon]
-                                    │  authenticate (HMAC)
-                                    │  replay check (seq window)
-                                    │  seccomp: only net I/O syscalls
-                                    │  runs as uid=2001, no capabilities
+[Receptor RF] ─── bytes crudos ──► [daemon tc_receiver]
+                                    │  autenticar (HMAC)
+                                    │  verificar repetición (ventana de seq)
+                                    │  seccomp: solo syscalls de E/S de red
+                                    │  se ejecuta como uid=2001, sin capacidades
                                     ▼
-                              Unix socket (security boundary)
+                              Socket Unix (frontera de seguridad)
                                     │
                                     ▼
-                              [obc_router daemon]
-                                    │  parse APID
-                                    │  route to subsystem
-                                    │  seccomp: only IPC syscalls
+                              [daemon obc_router]
+                                    │  parsear APID
+                                    │  enrutar al subsistema
+                                    │  seccomp: solo syscalls IPC
                                     ▼
-                         [subsystem daemons] (actuators, sensors)
+                         [daemons de subsistema] (actuadores, sensores)
 ```
 
-If `tc_receiver` is compromised, it can only send bytes over the Unix socket.
-It cannot directly command actuators, read sensor data, or access the filesystem.
+Si `tc_receiver` es comprometido, solo puede enviar bytes por el socket Unix.
+No puede comandar actuadores directamente, leer datos de sensores ni acceder al sistema de ficheros.
 
 ---
 
-## Linux Capabilities
+## Capacidades Linux
 
-### Why `setuid root` Is Dangerous
+### Por qué `setuid root` es peligroso
 
-The traditional Unix model is binary: root (uid=0) can do everything, everyone else
-is restricted. A daemon that needs to open a raw socket must run as root — and if it
-has a bug, the attacker gets a root shell.
+El modelo Unix tradicional es binario: root (uid=0) puede hacer todo, el resto
+está restringido. Un daemon que necesite abrir un socket raw debe ejecutarse como root — y si tiene
+un bug, el atacante obtiene una shell root.
 
-### Capability-Based Security
+### Seguridad basada en capacidades
 
-Linux breaks root privileges into ~40 independent capabilities:
+Linux divide los privilegios de root en ~40 capacidades independientes:
 
-| Capability           | Allows                                          |
-|----------------------|-------------------------------------------------|
-| `CAP_NET_BIND_SERVICE`| Bind to ports < 1024                           |
-| `CAP_SYS_RAWIO`      | Access raw I/O ports (`/dev/mem`, iopl)         |
-| `CAP_NET_RAW`        | Open raw sockets (sniff/inject packets)         |
-| `CAP_SYS_NICE`       | Set process priority / real-time scheduling     |
-| `CAP_NET_ADMIN`      | Configure network interfaces                    |
+| Capacidad             | Permite                                          |
+|-----------------------|--------------------------------------------------|
+| `CAP_NET_BIND_SERVICE`| Enlazar a puertos < 1024                        |
+| `CAP_SYS_RAWIO`       | Acceder a puertos I/O raw (`/dev/mem`, iopl)    |
+| `CAP_NET_RAW`         | Abrir sockets raw (captura/inyección de paquetes)|
+| `CAP_SYS_NICE`        | Establecer prioridad de proceso / planificación en tiempo real |
+| `CAP_NET_ADMIN`       | Configurar interfaces de red                    |
 
-**Principle of least privilege**: Start as root, acquire the few capabilities you
-need for initialization, then **drop all others permanently**. Even if the process
-is exploited, the attacker only gets the capabilities you kept.
+**Principio de mínimo privilegio**: arrancar como root, adquirir las pocas capacidades
+necesarias para la inicialización, y luego **descartar todas las demás de forma permanente**. Aunque el proceso
+sea explotado, el atacante solo obtiene las capacidades que se conservaron.
 
 ### `PR_SET_NO_NEW_PRIVS`
 
-After calling `prctl(PR_SET_NO_NEW_PRIVS, 1)`, the process and all its children
-can never gain new privileges via `setuid` binaries or file capabilities. This is
-a one-way door — you cannot undo it.
+Tras llamar a `prctl(PR_SET_NO_NEW_PRIVS, 1)`, el proceso y todos sus hijos
+nunca podrán obtener nuevos privilegios mediante binarios `setuid` ni capacidades de fichero. Esto es
+una puerta de un solo sentido — no se puede deshacer.
 
-### Capability Drop Sequence
+### Secuencia de descarte de capacidades
 
 ```
-1. Start as root (needed to open raw socket / access /dev/spidev)
-2. Open the privileged resources (raw socket, device file)
-3. Drop all capabilities you don't need
-4. setgid(daemon_gid)   ← must happen BEFORE setuid
+1. Arrancar como root (necesario para abrir socket raw / acceder a /dev/spidev)
+2. Abrir los recursos privilegiados (socket raw, fichero de dispositivo)
+3. Descartar todas las capacidades que no se necesiten
+4. setgid(daemon_gid)   ← debe ocurrir ANTES de setuid
 5. setuid(daemon_uid)
 6. prctl(PR_SET_NO_NEW_PRIVS, 1)
-7. Load seccomp BPF filter
-8. Enter main event loop
+7. Cargar el filtro seccomp BPF
+8. Entrar en el bucle principal de eventos
 ```
 
 ---
 
 ## Seccomp BPF
 
-Seccomp (secure computing mode) restricts which syscalls a process may make.
-With BPF (Berkeley Packet Filter) rules you can write an **allowlist**:
+Seccomp (modo de cómputo seguro) restringe qué syscalls puede realizar un proceso.
+Con reglas BPF (Berkeley Packet Filter) se puede escribir una **lista de permisos**:
 
 ```
-# For tc_receiver: we only need network I/O
-ALLOW: read, write, recv, recvmsg, sendmsg, accept, close, epoll_wait, futex, exit
-DENY ALL (SIGKILL)
+# Para tc_receiver: solo necesitamos E/S de red
+PERMITIR: read, write, recv, recvmsg, sendmsg, accept, close, epoll_wait, futex, exit
+DENEGAR TODO (SIGKILL)
 ```
 
-If an attacker exploits a memory-corruption bug and tries to call `execve` or
-`open("/etc/passwd")`, the kernel kills the process immediately.
+Si un atacante explota un bug de corrupción de memoria e intenta llamar a `execve` o
+`open("/etc/passwd")`, el kernel mata el proceso inmediatamente.
 
-The `seccomp` crate provides a safe Rust API. In this day's examples we show the
-pattern with comments; a full seccomp implementation requires a separate crate
-(`libseccomp` bindings) not in the workspace.
+El crate `seccomp` proporciona una API Rust segura. En los ejemplos de este día mostramos el
+patrón con comentarios; una implementación completa de seccomp requiere un crate aparte
+(bindings de `libseccomp`) que no está en el workspace.
 
 ---
 
-## HMAC-SHA256 for TC Authentication
+## HMAC-SHA256 para autenticación de TC
 
-### What It Provides
+### Qué proporciona
 
-- **Integrity**: Any bit flip in the packet changes the MAC
-- **Authentication**: Only someone with the key can produce a valid MAC
-- **NOT confidentiality**: The packet contents are in plaintext; HMAC does not encrypt
+- **Integridad**: cualquier cambio de bit en el paquete cambia el MAC
+- **Autenticación**: solo alguien con la clave puede producir un MAC válido
+- **NO confidencialidad**: el contenido del paquete está en texto plano; HMAC no cifra
 
-For spacecraft TCs, confidentiality is typically not required (the commands are
-not secret; preventing unauthorized execution is what matters).
+Para TCs de naves espaciales, la confidencialidad generalmente no es necesaria (los comandos no son
+secretos; lo que importa es prevenir la ejecución no autorizada).
 
-### Construction
+### Construcción
 
 ```
-MAC = HMAC-SHA256(key, packet_bytes_excluding_mac_field)
+MAC = HMAC-SHA256(clave, bytes_paquete_excluyendo_campo_mac)
 ```
 
-The MAC (32 bytes) is appended to the end of each packet. The receiver:
-1. Strips the last 32 bytes (the claimed MAC)
-2. Recomputes HMAC over the remaining bytes
-3. Compares in constant time
+El MAC (32 bytes) se añade al final de cada paquete. El receptor:
+1. Extrae los últimos 32 bytes (el MAC declarado)
+2. Recalcula el HMAC sobre los bytes restantes
+3. Compara en tiempo constante
 
-### Key Management
+### Gestión de claves
 
-- The key is a 256-bit random value generated on the ground
-- Loaded into the OBC non-volatile storage (NVS) before integration
-- Never transmitted over any link
-- Rotated between missions (or on orbit if a secure key-update channel exists)
+- La clave es un valor aleatorio de 256 bits generado en tierra
+- Se carga en el almacenamiento no volátil (NVS) del OBC antes de la integración
+- Nunca se transmite por ningún enlace
+- Se rota entre misiones (o en órbita si existe un canal seguro de actualización de claves)
 
 ---
 
-## Timing Attacks
+## Ataques de temporización
 
-A **timing attack** exploits the fact that `==` on byte arrays short-circuits:
-it returns `false` the moment it finds a differing byte. By measuring how long
-verification takes, an attacker can learn how many bytes of their guess are correct.
+Un **ataque de temporización** explota el hecho de que `==` en arrays de bytes realiza cortocircuito:
+devuelve `false` en el momento en que encuentra un byte diferente. Midiendo cuánto tiempo tarda
+la verificación, un atacante puede deducir cuántos bytes de su suposición son correctos.
 
 ```rust
-// WRONG: timing-sensitive comparison
+// MAL: comparación sensible al tiempo
 if computed_mac == received_mac { ... }
 
-// RIGHT: constant-time comparison (subtle crate)
+// BIEN: comparación en tiempo constante (crate subtle)
 use subtle::ConstantTimeEq;
 if computed_mac.ct_eq(&received_mac).into() { ... }
 ```
 
-`subtle::ConstantTimeEq` always touches every byte regardless of where the first
-difference is, so timing reveals nothing about the key.
+`subtle::ConstantTimeEq` siempre examina todos los bytes independientemente de dónde está la primera
+diferencia, así que la temporización no revela nada sobre la clave.
 
-In practice, timing attacks on MACs over a network are difficult due to jitter,
-but **you must always use constant-time comparison** — the cost is zero, the risk
-of not doing it is non-zero.
+En la práctica, los ataques de temporización sobre MACs por red son difíciles debido al jitter,
+pero **siempre se debe usar comparación en tiempo constante** — el coste es cero, el riesgo
+de no hacerlo no lo es.
 
 ---
 
-## Replay Attacks
+## Ataques de repetición
 
-An attacker records a valid, authenticated TC (e.g., "open fuel valve") and retransmits
-it later. The HMAC is still valid — the attacker didn't modify anything.
+Un atacante graba un TC válido y autenticado (p. ej., "abrir válvula de combustible") y lo retransmite
+más tarde. El HMAC sigue siendo válido — el atacante no modificó nada.
 
-**Mitigation: Sliding window sequence number**
+**Mitigación: número de secuencia con ventana deslizante**
 
-Each TC carries a monotonically increasing 16-bit sequence number. The receiver
-maintains a window of the last N sequence numbers seen:
+Cada TC lleva un número de secuencia de 16 bits creciente monotónicamente. El receptor
+mantiene una ventana de los últimos N números de secuencia vistos:
 
 ```
-                   window (64 bits)
-last_seq=100  ──►  bit 0 = seq 100 seen
-                   bit 1 = seq 99 seen
+                   ventana (64 bits)
+last_seq=100  ──►  bit 0 = seq 100 visto
+                   bit 1 = seq 99 visto
                    ...
-                   bit 63 = seq 37 seen
+                   bit 63 = seq 37 visto
 
-Accept:  seq 101 (one ahead — advance window)
-Accept:  seq 95  (in window, not yet seen — set its bit)
-Reject:  seq 100 (in window, bit 0 already set — replay!)
-Reject:  seq 36  (behind window — too old, assume replay)
+Aceptar:  seq 101 (uno adelante — avanzar ventana)
+Aceptar:  seq 95  (en ventana, aún no visto — establecer su bit)
+Rechazar: seq 100 (en ventana, bit 0 ya establecido — ¡repetición!)
+Rechazar: seq 36  (fuera de ventana — demasiado antiguo, asumir repetición)
 ```
 
-Combined with HMAC, this prevents both forgery and replay.
+Combinado con HMAC, esto previene tanto la falsificación como la repetición.
 
 ---
 
-## Rust Memory Safety and `unsafe`
+## Seguridad de memoria en Rust y `unsafe`
 
-### What Safe Rust Guarantees
+### Qué garantiza el Rust seguro
 
-- No null pointer dereferences
-- No buffer overflows (bounds are checked at runtime, or proven at compile time)
-- No use-after-free (the borrow checker ensures references don't outlive their data)
-- No data races (the type system enforces Send/Sync)
-- No uninitialized memory reads (the compiler requires initialization)
+- Sin desreferencias de puntero nulo
+- Sin desbordamientos de búfer (los límites se comprueban en tiempo de ejecución o se prueban en compilación)
+- Sin uso tras liberación (el borrow checker garantiza que las referencias no sobreviven a sus datos)
+- Sin condiciones de carrera (el sistema de tipos impone Send/Sync)
+- Sin lecturas de memoria no inicializada (el compilador exige inicialización)
 
-### What `unsafe` Requires YOU to Guarantee
+### Qué requiere `unsafe` que TÚ garantices
 
-Inside an `unsafe` block, Rust turns off some of these checks. The programmer must
-manually ensure:
+Dentro de un bloque `unsafe`, Rust desactiva algunas de estas comprobaciones. El programador debe
+garantizar manualmente:
 
-1. Pointer arithmetic stays in-bounds
-2. Pointed-to memory is properly initialized and aligned
-3. No aliased mutable references exist
-4. FFI data types match the C ABI exactly
-5. Invariants documented in `SAFETY` comments hold
+1. La aritmética de punteros se mantiene dentro de los límites
+2. La memoria apuntada está correctamente inicializada y alineada
+3. No existen referencias mutables con alias
+4. Los tipos de datos FFI coinciden exactamente con el ABI de C
+5. Los invariantes documentados en comentarios `SAFETY` se cumplen
 
-### The Unsafe Audit Process
+### El proceso de auditoría de unsafe
 
-For safety-critical code (DO-178C DAL-B and above), every `unsafe` block needs:
+Para código de seguridad crítica (DO-178C DAL-B y superior), cada bloque `unsafe` necesita:
 
-1. A `// SAFETY:` comment explaining why the unsafe operation is valid
-2. Review by a second engineer
-3. Miri clean run (no undefined behavior detected)
-4. Fuzz test for parsers / deserializers
-5. Test coverage ≥ MC/DC criteria (see Day 9)
+1. Un comentario `// SAFETY:` que explique por qué la operación unsafe es válida
+2. Revisión por un segundo ingeniero
+3. Ejecución limpia de Miri (ningún comportamiento indefinido detectado)
+4. Prueba fuzz para parsers / deserializadores
+5. Cobertura de pruebas ≥ criterios MC/DC (ver Día 9)
 
-The goal is not to eliminate `unsafe` (sometimes impossible with hardware access),
-but to **contain it** in small, well-reviewed functions with documented invariants.
+El objetivo no es eliminar `unsafe` (a veces imposible con acceso a hardware),
+sino **contenerlo** en funciones pequeñas y bien revisadas con invariantes documentados.
 
 ---
 
-## Privilege Separation Architecture
+## Arquitectura de separación de privilegios
 
-The TC receiver is the most attack-exposed component (it faces the uplink). We give
-it the **fewest possible privileges**:
+El receptor TC es el componente más expuesto a ataques (da al enlace ascendente). Le otorgamos
+los **mínimos privilegios posibles**:
 
 ```
 [tc_receiver]                    [obc_router]
- - uid: 2001 (tc_rx user)         - uid: 2002 (router user)
- - No capabilities                - CAP_SYS_NICE (for RT scheduling)
- - seccomp: net I/O only          - seccomp: IPC + timer syscalls
- - Can read: raw socket           - Can read/write: Unix socket
- - Cannot: open files, fork,      - Cannot: net I/O, raw sockets
-   execve, mmap exec              
+ - uid: 2001 (usuario tc_rx)      - uid: 2002 (usuario router)
+ - Sin capacidades                - CAP_SYS_NICE (para planificación RT)
+ - seccomp: solo E/S de red       - seccomp: syscalls IPC + timer
+ - Puede leer: socket raw         - Puede leer/escribir: socket Unix
+ - No puede: abrir ficheros,      - No puede: E/S de red, sockets raw
+   hacer fork, execve, mmap exec              
 ```
 
-The Unix socket between them is the **security boundary**. The router:
-- Validates the packet structure (APID, length fields)
-- Rate-limits per-APID
-- Routes to the correct subsystem handler
+El socket Unix entre ellos es la **frontera de seguridad**. El router:
+- Valida la estructura del paquete (APID, campos de longitud)
+- Limita la tasa por APID
+- Enruta al handler del subsistema correcto
 
-Even if an attacker finds a remote code execution bug in `tc_receiver`, they are
-sandboxed: they can only send bytes to the router over the Unix socket, and the
-router's own validation limits what harm those bytes can cause.
+Incluso si un atacante encuentra un bug de ejecución remota de código en `tc_receiver`, está
+en una sandbox: solo puede enviar bytes al router por el socket Unix, y la
+propia validación del router limita el daño que esos bytes pueden causar.
 
 ---
 
-## References
+## Referencias
 
-- [Linux Capabilities man page](https://man7.org/linux/man-pages/man7/capabilities.7.html)
-- [Seccomp BPF kernel docs](https://www.kernel.org/doc/html/latest/userspace-api/seccomp_filter.html)
-- [ECSS-E-ST-70-41C: Telecommand Protocols](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-space-packet-protocol/)
-- NIST SP 800-38B: HMAC recommendations
-- [subtle crate](https://docs.rs/subtle): constant-time cryptographic operations
+- [Página de manual de capacidades Linux](https://man7.org/linux/man-pages/man7/capabilities.7.html)
+- [Documentación del kernel de Seccomp BPF](https://www.kernel.org/doc/html/latest/userspace-api/seccomp_filter.html)
+- [ECSS-E-ST-70-41C: Protocolos de telecomandos](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-space-packet-protocol/)
+- NIST SP 800-38B: Recomendaciones HMAC
+- [Crate subtle](https://docs.rs/subtle): operaciones criptográficas en tiempo constante

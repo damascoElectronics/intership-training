@@ -1,103 +1,103 @@
-// Day 1, Example 1: Basic Tokio Runtime
+// Día 1, Ejemplo 1: Runtime Básico de Tokio
 //
-// This example shows what #[tokio::main] actually does under the hood,
-// and introduces the basic async fn / .await pattern.
+// Este ejemplo muestra qué hace realmente #[tokio::main] por debajo,
+// e introduce el patrón básico async fn / .await.
 //
-// If you've used FreeRTOS: think of the tokio runtime as the RTOS kernel,
-// and async functions as tasks. The key difference is that tokio tasks
-// are *cooperative* — they yield control voluntarily at .await points,
-// rather than being preempted by a timer interrupt.
+// Si has usado FreeRTOS: piensa en el runtime de tokio como el kernel del RTOS,
+// y en las funciones async como tareas. La diferencia clave es que las tareas de tokio
+// son *cooperativas* — ceden el control voluntariamente en los puntos .await,
+// en lugar de ser interrumpidas por una interrupción de temporizador.
 //
-// Run with:
+// Ejecutar con:
 //   cargo run --example 01_basic_runtime
 
-// The #[tokio::main] attribute macro transforms our async fn main() into
-// a regular fn main() that builds a Tokio runtime and blocks on it.
+// El atributo macro #[tokio::main] transforma nuestra async fn main() en
+// una fn main() regular que construye un runtime de Tokio y bloquea sobre él.
 //
-// Expanding the macro manually:
+// Expandiendo el macro manualmente:
 //
 //   #[tokio::main]
 //   async fn main() { ... }
 //
-// becomes approximately:
+// se convierte aproximadamente en:
 //
 //   fn main() {
 //       tokio::runtime::Builder::new_multi_thread()
-//           .enable_all()   // enables both time and I/O drivers
+//           .enable_all()   // habilita los drivers de tiempo e I/O
 //           .build()
-//           .expect("Failed to build Tokio runtime")
+//           .expect("Falló la construcción del runtime de Tokio")
 //           .block_on(async {
-//               // your async main body here
+//               // el cuerpo de tu main async aquí
 //           })
 //   }
 //
-// `block_on` means: run this future to completion on the current OS thread,
-// using this runtime's reactor to handle I/O events. It is a synchronous
-// call — it does not return until the future completes.
+// `block_on` significa: ejecutar este future hasta completarse en el hilo OS actual,
+// usando el reactor de este runtime para manejar eventos de I/O. Es una llamada
+// síncrona — no retorna hasta que el future se completa.
 //
-// For single-threaded use (e.g., embedded-like environments, testing),
-// you can use #[tokio::main(flavor = "current_thread")] which avoids
-// spawning extra OS threads entirely.
+// Para uso monohilo (p. ej., entornos tipo embedded, pruebas),
+// puedes usar #[tokio::main(flavor = "current_thread")] que evita
+// lanzar hilos OS adicionales por completo.
 #[tokio::main]
 async fn main() {
-    println!("=== Example 01: Basic Runtime ===\n");
+    println!("=== Ejemplo 01: Runtime Básico ===\n");
 
-    // Calling an async function does NOT run it immediately.
-    // It returns a Future — a description of work to be done.
-    // Only when you .await it does the runtime drive it to completion.
+    // Llamar a una función async NO la ejecuta inmediatamente.
+    // Devuelve un Future — una descripción del trabajo a realizar.
+    // Solo cuando haces .await el runtime lo lleva a completarse.
     //
-    // This is analogous to configuring a DMA transfer on STM32:
-    // HAL_SPI_Transmit_DMA() sets things up but doesn't block.
-    // The transfer happens asynchronously; you get a callback or interrupt.
-    // Here, .await is that "wait for completion" point.
+    // Esto es análogo a configurar una transferencia DMA en STM32:
+    // HAL_SPI_Transmit_DMA() configura las cosas pero no bloquea.
+    // La transferencia ocurre de forma asíncrona; recibes un callback o interrupción.
+    // Aquí, .await es ese punto de "esperar a que termine".
     let result = compute_something(10).await;
-    println!("compute_something(10) returned: {}", result);
+    println!("compute_something(10) retornó: {}", result);
 
-    // async blocks create an anonymous future inline.
-    // Useful for one-off async work without defining a named function.
+    // Los bloques async crean un future anónimo en línea.
+    // Útil para trabajo async puntual sin definir una función con nombre.
     let inline_result = async {
         tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
         42u32
     }
     .await;
-    println!("Inline async block result: {}", inline_result);
+    println!("Resultado del bloque async en línea: {}", inline_result);
 
-    // Demonstrate that async functions compose naturally.
-    // Each .await is a potential yield point where other tasks can run.
-    // On bare metal this would be your cooperative scheduler yield.
+    // Demostrar que las funciones async se componen naturalmente.
+    // Cada .await es un posible punto de cesión donde otras tareas pueden ejecutarse.
+    // En bare metal esto sería la cesión de tu planificador cooperativo.
     let total = add_async(compute_something(3).await, compute_something(7).await).await;
-    println!("add_async(3+7 computed) = {}", total);
+    println!("add_async(3+7 computados) = {}", total);
 
-    // tokio::time::sleep yields the current task for the given duration.
-    // Unlike std::thread::sleep, this does NOT block the OS thread —
-    // other tasks continue running while we wait.
-    // The reactor registers a timer and wakes us when it fires.
-    println!("\nSleeping 50ms (non-blocking — other tasks could run)...");
+    // tokio::time::sleep cede la tarea actual por la duración indicada.
+    // A diferencia de std::thread::sleep, esto NO bloquea el hilo OS —
+    // otras tareas siguen ejecutándose mientras esperamos.
+    // El reactor registra un temporizador y nos despierta cuando dispara.
+    println!("\nDurmiendo 50ms (no bloqueante — otras tareas podrían ejecutarse)...");
     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-    println!("Woke up after 50ms");
+    println!("Despertado tras 50ms");
 
-    println!("\nDone.");
+    println!("\nListo.");
 }
 
-// An async function is syntactic sugar for a function returning
-// impl Future<Output = T>. The compiler rewrites your sequential
-// code into a state machine (similar to how you'd write a non-blocking
-// state machine by hand in embedded C, but the compiler does it for you).
+// Una función async es azúcar sintáctico para una función que retorna
+// impl Future<Output = T>. El compilador reescribe tu código secuencial
+// en una máquina de estados (similar a como escribirías a mano una máquina
+// de estados no bloqueante en C embebido, pero el compilador lo hace por ti).
 //
-// Each .await point is a state transition: the future stores all the
-// local variables it needs across that point, then suspends.
+// Cada punto .await es una transición de estado: el future almacena todas las
+// variables locales que necesita a través de ese punto, luego se suspende.
 async fn compute_something(input: u32) -> u32 {
-    // Simulate I/O latency (like waiting for a sensor response over UART).
-    // In real code this would be actual async I/O, not a sleep.
+    // Simular latencia de I/O (como esperar la respuesta de un sensor por UART).
+    // En código real esto sería I/O async real, no un sleep.
     tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
 
-    // The compiler captures `input` across the .await above —
-    // it's stored in the state machine, not on the call stack.
+    // El compilador captura `input` a través del .await anterior —
+    // se almacena en la máquina de estados, no en la pila de llamadas.
     input * input
 }
 
 async fn add_async(a: u32, b: u32) -> u32 {
-    // Not all async functions need to .await anything.
-    // Being async just means the caller can .await us uniformly.
+    // No todas las funciones async necesitan hacer .await a algo.
+    // Ser async solo significa que el llamador puede hacernos .await uniformemente.
     a + b
 }

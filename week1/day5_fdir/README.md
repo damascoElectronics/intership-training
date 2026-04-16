@@ -1,273 +1,276 @@
-# Day 5: FDIR — Fault Detection, Isolation, and Recovery
+# Día 5: FDIR — Detección, Aislamiento y Recuperación de Fallos
 
-## Overview
+## Descripción general
 
-FDIR is a discipline born in spacecraft software engineering. When a satellite is in orbit
-hundreds of kilometres above Earth, no engineer can reach over and reboot it. The software
-must detect problems, contain their blast radius, and nurse the system back to health — all
-without human intervention. Today we build the Rust patterns that make this possible.
+FDIR es una disciplina nacida en la ingeniería de software para naves espaciales. Cuando un
+satélite se encuentra en órbita a cientos de kilómetros sobre la Tierra, ningún ingeniero puede
+alcanzarlo para reiniciarlo. El software debe detectar los problemas, contener su radio de impacto
+y devolver el sistema a un estado de salud correcto, todo ello sin intervención humana. Hoy
+construimos los patrones Rust que hacen esto posible.
 
-This is the capstone theory day. Every pattern here will appear in the week 1 project.
-
----
-
-## Prerequisites
-
-- Day 1: Tokio async / tasks
-- Day 2: Unix I/O and sockets
-- Day 3: FFI (not directly used, but context for unsafe boundaries)
-- Day 4: IPC, D-Bus, Unix sockets
+Este es el día de teoría final del módulo. Todos los patrones presentados aquí aparecerán en el
+proyecto de la semana 1.
 
 ---
 
-## The Three Steps: Detect → Isolate → Recover
+## Prerrequisitos
 
-### 1. Fault Detection
+- Día 1: Async con Tokio / tareas
+- Día 2: I/O Unix y sockets
+- Día 3: FFI (no se usa directamente, pero proporciona contexto sobre los límites de código inseguro)
+- Día 4: IPC, D-Bus, sockets Unix
 
-You can't fix what you can't see. Detection mechanisms include:
+---
 
-- **Watchdogs**: A task must prove it is alive by periodically "kicking" a timer.
-  If the timer expires, the watchdog fires. This catches deadlocks, infinite loops,
-  and resource starvation — bugs that don't crash the program but render it useless.
-- **Health monitoring**: Every component reports its state. A central health table
-  accumulates this information and provides a system-level view.
-- **Sanity checks**: Range validation, checksum verification, plausibility tests.
-  A temperature sensor reading -500°C on an orbiting spacecraft is almost certainly
-  a sensor fault, not a physics breakthrough.
-- **Missed heartbeats**: Similar to watchdogs but at the communication level.
-  If a subsystem stops sending telemetry, assume it has failed.
+## Los Tres Pasos: Detectar → Aislar → Recuperar
 
-### 2. Fault Isolation
+### 1. Detección de fallos
 
-Once you detect a fault, you must prevent it from spreading:
+No se puede reparar lo que no se puede ver. Los mecanismos de detección incluyen:
 
-- **Circuit breakers**: Stop hammering a failing component. If a sensor daemon
-  returns errors on every call, stop calling it for a while and let it recover.
-  Borrowed from distributed systems (Netflix Hystrix, etc.) but equally relevant
-  in embedded daemons.
-- **Sandboxing**: Run risky operations in separate processes or tasks so their
-  failure doesn't corrupt global state.
-- **Mode locking**: When something goes wrong, restrict what the system is allowed
-  to do. You can't accidentally fire a thruster if you're in a mode that doesn't
-  allow it. The typestate pattern enforces this at compile time.
+- **Watchdogs**: Una tarea debe demostrar que está viva "pateando" periódicamente un temporizador.
+  Si el temporizador expira, el watchdog se activa. Esto detecta bloqueos mutuos (deadlocks),
+  bucles infinitos y agotamiento de recursos — errores que no hacen caer el programa pero lo
+  dejan inútil.
+- **Monitorización de salud**: Cada componente informa de su estado. Una tabla de salud central
+  acumula esta información y proporciona una vista a nivel de sistema.
+- **Comprobaciones de cordura**: Validación de rangos, verificación de checksums, pruebas de
+  plausibilidad. Una lectura de sensor de temperatura de -500°C en una nave espacial en órbita
+  es casi con certeza un fallo del sensor, no un avance en física.
+- **Latidos perdidos**: Similar a los watchdogs pero a nivel de comunicación. Si un subsistema
+  deja de enviar telemetría, asumir que ha fallado.
 
-### 3. Recovery
+### 2. Aislamiento de fallos
 
-Recovery follows an **escalation chain**: try the cheapest option first; escalate
-only if it fails.
+Una vez detectado un fallo, hay que evitar que se propague:
+
+- **Disyuntores (circuit breakers)**: Evitar martillar un componente que está fallando. Si un
+  demonio de sensor devuelve errores en cada llamada, dejar de llamarlo durante un tiempo y
+  dejarle recuperarse. Tomado de los sistemas distribuidos (Netflix Hystrix, etc.) pero igualmente
+  relevante en demonios embebidos.
+- **Sandboxing**: Ejecutar operaciones arriesgadas en procesos o tareas separados para que su
+  fallo no corrompa el estado global.
+- **Bloqueo de modo**: Cuando algo falla, restringir lo que el sistema puede hacer. No se puede
+  disparar un propulsor accidentalmente si se está en un modo que no lo permite. El patrón
+  typestate hace cumplir esto en tiempo de compilación.
+
+### 3. Recuperación
+
+La recuperación sigue una **cadena de escalada**: probar primero la opción más barata; escalar
+solo si falla.
 
 ```
-Fault detected
+Fallo detectado
     ↓
-Try reset / retry (cheap)
-    ↓ (still failing)
-Switch to redundant component
-    ↓ (no redundancy or redundancy also failed)
-Enter safe mode (minimal-risk configuration)
-    ↓ (cannot recover autonomously)
-Wait for ground command / emergency mode
+Intentar reinicio / reintento (barato)
+    ↓ (sigue fallando)
+Cambiar al componente redundante
+    ↓ (sin redundancia o la redundancia también falló)
+Entrar en modo seguro (configuración de mínimo riesgo)
+    ↓ (no se puede recuperar de forma autónoma)
+Esperar comando desde tierra / modo de emergencia
 ```
 
-**Spacecraft example — star tracker failure:**
-1. Star tracker returns invalid quaternion.
-2. Mark component Degraded. Attempt soft reset (send reset command over I2C).
-3. If still failing after 3 resets, switch to redundant star tracker.
-4. If both star trackers failed, switch attitude control to magnetometers only
-   (lower accuracy but functional). Enter Degraded mode.
-5. If magnetometers also unreliable (e.g., near magnetic poles), enter Safe Mode:
-   orient solar panels toward Sun, stop all non-essential operations, beacon
-   telemetry on a slow schedule, wait for ground contact.
-6. If even that fails: Emergency mode. Fire survival heaters, transmit emergency
-   beacon, await ground intervention.
+**Ejemplo espacial — fallo del rastreador de estrellas:**
+1. El rastreador de estrellas devuelve un cuaternión inválido.
+2. Marcar el componente como Degradado. Intentar reinicio suave (enviar comando de reinicio por I2C).
+3. Si sigue fallando tras 3 reinicios, cambiar al rastreador de estrellas redundante.
+4. Si ambos rastreadores de estrellas fallaron, cambiar el control de actitud a magnetómetros
+   únicamente (menor precisión pero funcional). Entrar en modo Degradado.
+5. Si los magnetómetros también son poco fiables (p. ej., cerca de los polos magnéticos), entrar
+   en Modo Seguro: orientar los paneles solares hacia el Sol, detener todas las operaciones no
+   esenciales, enviar telemetría de baliza a un ritmo lento, esperar contacto con tierra.
+6. Si incluso eso falla: modo de Emergencia. Activar calefactores de supervivencia, transmitir
+   baliza de emergencia, esperar intervención desde tierra.
 
 ---
 
-## Watchdog Patterns
+## Patrones de Watchdog
 
-### Hardware Watchdog
+### Watchdog por hardware
 
-All modern microcontrollers (STM32, NXP LPC, etc.) have a hardware watchdog timer
-(IWDG/WWDG). If not kicked within a configurable window, the MCU resets.
-This is the last line of defence — a bare-metal guarantee.
+Todos los microcontroladores modernos (STM32, NXP LPC, etc.) tienen un temporizador watchdog por
+hardware (IWDG/WWDG). Si no se le "patea" dentro de una ventana configurable, el MCU se reinicia.
+Esta es la última línea de defensa — una garantía a nivel de metal puro.
 
-In Linux-based flight computers (Raspberry Pi CM4, Jetson, custom SBCs), the kernel
-exposes `/dev/watchdog`. Writing any byte to it kicks the hardware watchdog. If your
-process dies without closing the fd (SO_KEEPALIVE is off), the hardware resets.
+En computadoras de vuelo basadas en Linux (Raspberry Pi CM4, Jetson, SBCs personalizadas), el
+kernel expone `/dev/watchdog`. Escribir cualquier byte en él patea el watchdog por hardware. Si
+el proceso muere sin cerrar el fd (SO_KEEPALIVE está desactivado), el hardware se reinicia.
 
 ```bash
-# Open /dev/watchdog and keep it alive — closing without writing resets the system
-echo 1 > /dev/watchdog   # kick
-echo V > /dev/watchdog   # magic close: disarm before clean shutdown
+# Abrir /dev/watchdog y mantenerlo vivo — cerrarlo sin escribir reinicia el sistema
+echo 1 > /dev/watchdog   # patear
+echo V > /dev/watchdog   # cierre mágico: desarmar antes de apagado limpio
 ```
 
-### Software Watchdog Daemon
+### Demonio watchdog por software
 
-A software watchdog monitors multiple tasks within a single process. Each task gets
-a `WatchdogToken`; calling `.kick()` resets its timer. A background monitor task
-checks all tokens. This catches per-task hangs without a full process reset.
+Un watchdog por software monitoriza múltiples tareas dentro de un único proceso. Cada tarea
+recibe un `WatchdogToken`; llamar a `.kick()` reinicia su temporizador. Una tarea monitora en
+segundo plano verifica todos los tokens. Esto detecta bloqueos por tarea sin necesidad de
+reiniciar el proceso completo.
 
-This is the pattern in `examples/01_watchdog.rs`.
+Este es el patrón en `examples/01_watchdog.rs`.
 
 ---
 
-## Circuit Breaker
+## Disyuntor (Circuit Breaker)
 
-Originated in distributed systems (Fowler 2014). Works like a physical circuit
-breaker: trips when too many failures occur, preventing further damage until the
-fault clears.
+Originado en sistemas distribuidos (Fowler 2014). Funciona como un disyuntor físico: se activa
+cuando ocurren demasiados fallos, evitando daños adicionales hasta que el fallo se resuelve.
 
 ```
-         Failure count < threshold
+         Contador de fallos < umbral
          ┌─────────────────────────┐
          │                         │
-    ┌────▼─────┐   threshold    ┌──┴──────┐
-    │  CLOSED  │──────────────►│  OPEN   │
-    │ (normal) │               │(failing)│
+    ┌────▼─────┐   umbral       ┌──┴──────┐
+    │  CERRADO │──────────────►│  ABIERTO│
+    │ (normal) │               │(fallando)│
     └──────────┘               └────┬────┘
          ▲                          │
-         │    probe succeeds        │ timeout elapsed
+         │    sondeo exitoso        │ tiempo de espera transcurrido
          │   ┌───────────┐          │
-         └───│ HALF-OPEN │◄─────────┘
-             │ (testing) │
+         └───│SEMI-ABIERTO│◄─────────┘
+             │ (probando) │
              └───────────┘
-                   │ probe fails
-                   │────────────►back to OPEN
+                   │ sondeo falla
+                   │────────────►vuelve a ABIERTO
 ```
 
-States:
-- **Closed**: Normal operation. Failures increment counter. Counter ≥ threshold → Open.
-- **Open**: All calls fail immediately (fast-fail). After recovery timeout → Half-Open.
-- **Half-Open**: One probe call allowed through. Success → Closed. Failure → Open.
+Estados:
+- **Cerrado**: Operación normal. Los fallos incrementan el contador. Contador ≥ umbral → Abierto.
+- **Abierto**: Todas las llamadas fallan inmediatamente (fallo rápido). Tras el tiempo de recuperación → Semi-Abierto.
+- **Semi-Abierto**: Se permite pasar una llamada de sondeo. Éxito → Cerrado. Fallo → Abierto.
 
-See `examples/02_circuit_breaker.rs`.
+Ver `examples/02_circuit_breaker.rs`.
 
 ---
 
-## Supervisor Trees (Erlang's Influence)
+## Árboles de Supervisores (Influencia de Erlang)
 
-Erlang introduced the "let it crash" philosophy: instead of defensive coding for
-every possible error, let processes crash and have a supervisor restart them.
-The supervisor knows the restart policy (one-for-one, one-for-all, rest-for-one).
+Erlang introdujo la filosofía del "dejar que se caiga": en lugar de codificar defensivamente para
+cada error posible, dejar que los procesos fallen y que un supervisor los reinicie. El supervisor
+conoce la política de reinicio (uno-por-uno, todos-por-uno, resto-por-uno).
 
-In Rust async, we adapt this: tasks are cheap, panics or `Err` returns indicate
-fatal failure, supervisors restart with exponential backoff.
+En Rust async, adaptamos esto: las tareas son baratas, los pánicos o retornos `Err` indican fallo
+fatal, los supervisores reinician con retroceso exponencial.
 
 ```
 Supervisor
-├── SensorTask     (restart: always, max: 5, backoff: 2^n * 100ms)
-├── WatchdogTask   (restart: always, max: unlimited)
-└── TelemetryTask  (restart: always, max: 3, backoff: 2^n * 500ms)
+├── SensorTask     (reinicio: siempre, máx: 5, retroceso: 2^n * 100ms)
+├── WatchdogTask   (reinicio: siempre, máx: ilimitado)
+└── TelemetryTask  (reinicio: siempre, máx: 3, retroceso: 2^n * 500ms)
 ```
 
-Key parameters:
-- **max_restarts**: Prevent infinite restart loops (crash loop protection).
-- **backoff**: Don't hammercycle a broken resource; give it time to recover.
-- **restart policy**: one-for-one (restart just the failed task) is usually right
-  for independent tasks; one-for-all is for tightly coupled task sets.
+Parámetros clave:
+- **max_restarts**: Prevenir bucles de reinicio infinitos (protección contra crash-loop).
+- **backoff**: No ciclar repetidamente sobre un recurso roto; darle tiempo para recuperarse.
+- **política de reinicio**: uno-por-uno (reiniciar solo la tarea que falló) suele ser correcto
+  para tareas independientes; todos-por-uno es para conjuntos de tareas fuertemente acopladas.
 
-See `examples/04_supervisor.rs`.
+Ver `examples/04_supervisor.rs`.
 
 ---
 
-## Typestate Pattern for Mode Management
+## Patrón Typestate para Gestión de Modos
 
-In spacecraft software, not all operations are legal in all modes. You must not
-attempt an orbit manoeuvre when in Safe Mode. You must not downlink science data
-when the link is not established.
+En el software de naves espaciales, no todas las operaciones son válidas en todos los modos. No
+se debe intentar una maniobra orbital en Modo Seguro. No se deben transmitir datos científicos
+cuando el enlace no está establecido.
 
-The **typestate pattern** encodes these constraints in Rust's type system. Instead
-of a runtime `if mode == SafeMode { return Err(...) }` check, the compiler rejects
-illegal operations at compile time. There is zero runtime cost.
+El **patrón typestate** codifica estas restricciones en el sistema de tipos de Rust. En lugar de
+una comprobación en tiempo de ejecución `if mode == SafeMode { return Err(...) }`, el compilador
+rechaza las operaciones ilegales en tiempo de compilación. No hay coste en tiempo de ejecución.
 
 ```rust
 struct OBC<Mode> { _mode: PhantomData<Mode>, ... }
 
-// Only callable when Mode = Nominal
+// Solo invocable cuando Mode = Nominal
 impl OBC<Nominal> {
     fn fire_thruster(&self) { ... }
 }
 
-// Only callable when Mode = SafeMode
+// Solo invocable cuando Mode = SafeMode
 impl OBC<SafeMode> {
     fn run_diagnostics(&self) { ... }
 }
 
-// A function receiving OBC<SafeMode> cannot call fire_thruster —
-// it simply doesn't exist on that type. Compile error, not runtime error.
+// Una función que recibe OBC<SafeMode> no puede llamar a fire_thruster —
+// simplemente no existe en ese tipo. Error de compilación, no error en ejecución.
 ```
 
-See `examples/05_safe_state.rs`.
+Ver `examples/05_safe_state.rs`.
 
 ---
 
-## FDIR vs Error Handling
+## FDIR vs Manejo de Errores
 
-These are **different levels of abstraction** and are often confused:
+Estos son **diferentes niveles de abstracción** y frecuentemente se confunden:
 
-| | Error Handling | FDIR |
+| | Manejo de Errores | FDIR |
 |---|---|---|
-| **Level** | Function/module | System |
-| **Goal** | Propagate and handle errors gracefully | Keep the system alive and safe |
-| **Mechanism** | `Result<T, E>`, `?`, `match` | Watchdogs, circuit breakers, supervisors, health tables |
-| **Scope** | One operation | Entire subsystem or mission |
-| **Time horizon** | Milliseconds | Seconds to hours |
-| **Actor** | The calling code | An autonomous monitoring system |
+| **Nivel** | Función/módulo | Sistema |
+| **Objetivo** | Propagar y manejar errores con elegancia | Mantener el sistema vivo y seguro |
+| **Mecanismo** | `Result<T, E>`, `?`, `match` | Watchdogs, disyuntores, supervisores, tablas de salud |
+| **Alcance** | Una operación | Subsistema completo o misión |
+| **Horizonte temporal** | Milisegundos | Segundos a horas |
+| **Actor** | El código que llama | Un sistema de monitorización autónomo |
 
-Example: A sensor read returns `Err(ChecksumMismatch)`. Error handling says
-"retry once, then return Err up the call stack." FDIR says "this sensor has
-returned errors 10 times in the last 30 seconds; mark it Degraded, switch to
-backup, and notify the health table."
-
----
-
-## ECSS-E-ST-70-11C FDIR Requirements (Overview)
-
-The European Cooperation for Space Standardization defines requirements for
-onboard software. Key FDIR-relevant clauses:
-
-- **FDIR-1**: The OBSW shall implement a hierarchical FDIR with at least three levels.
-- **FDIR-2**: Each level shall have a defined escalation path.
-- **FDIR-3**: Safe mode shall disable all non-critical functions and minimise power.
-- **FDIR-4**: All fault detection events shall be logged with timestamp and context.
-- **FDIR-5**: Recovery actions shall be idempotent (safe to repeat).
-- **FDIR-6**: The system shall enter safe mode autonomously within a defined time
-  after loss of ground contact.
-
-These requirements directly motivate our patterns: the health table satisfies FDIR-4,
-the typestate safe mode satisfies FDIR-3, the supervisor satisfies FDIR-2.
+Ejemplo: Una lectura de sensor devuelve `Err(ChecksumMismatch)`. El manejo de errores dice
+"reintentar una vez, luego devolver Err por la pila de llamadas." FDIR dice "este sensor ha
+devuelto errores 10 veces en los últimos 30 segundos; marcarlo como Degradado, cambiar al
+respaldo y notificar a la tabla de salud."
 
 ---
 
-## The Safe State Concept
+## Requisitos FDIR de ECSS-E-ST-70-11C (Resumen)
 
-A **safe state** is a well-defined, minimal-risk system configuration. The system
-retreats to it when it doesn't know what else to do safely.
+La Cooperación Europea para la Normalización Espacial define requisitos para el software de a bordo.
+Cláusulas clave relevantes para FDIR:
 
-Properties of a good safe state:
-1. **Reachable from any other state**: You can always get there.
-2. **Stable**: Once in safe state, you stay there until explicitly commanded out.
-3. **Known power budget**: Solar panels deployed, heaters on, non-essentials off.
-4. **Communication preserved**: You can still receive ground commands.
-5. **No hazardous actions possible**: Thrusters disabled, pyros safed.
-6. **Telemetry continues**: You can see what's wrong from the ground.
+- **FDIR-1**: El OBSW deberá implementar un FDIR jerárquico con al menos tres niveles.
+- **FDIR-2**: Cada nivel deberá tener una ruta de escalada definida.
+- **FDIR-3**: El modo seguro deberá deshabilitar todas las funciones no críticas y minimizar el consumo de energía.
+- **FDIR-4**: Todos los eventos de detección de fallos deberán ser registrados con marca de tiempo y contexto.
+- **FDIR-5**: Las acciones de recuperación deberán ser idempotentes (seguras de repetir).
+- **FDIR-6**: El sistema deberá entrar en modo seguro de forma autónoma dentro de un tiempo definido
+  tras la pérdida de contacto con tierra.
 
-In our code, `OBC<SafeMode>` enforces properties 4 and 5 at compile time.
+Estos requisitos motivan directamente nuestros patrones: la tabla de salud satisface FDIR-4,
+el modo seguro typestate satisface FDIR-3, el supervisor satisface FDIR-2.
 
 ---
 
-## Examples
+## El Concepto de Estado Seguro
 
-| File | Concept | Run Command |
+Un **estado seguro** es una configuración del sistema bien definida y de mínimo riesgo. El sistema
+se retira a él cuando no sabe qué más hacer de forma segura.
+
+Propiedades de un buen estado seguro:
+1. **Alcanzable desde cualquier otro estado**: Siempre se puede llegar a él.
+2. **Estable**: Una vez en estado seguro, se permanece allí hasta que se recibe un comando explícito para salir.
+3. **Presupuesto de energía conocido**: Paneles solares desplegados, calefactores encendidos, no esenciales apagados.
+4. **Comunicación preservada**: Se pueden seguir recibiendo comandos desde tierra.
+5. **Ninguna acción peligrosa posible**: Propulsores deshabilitados, pirotécnicos asegurados.
+6. **Telemetría continua**: Se puede ver qué falla desde tierra.
+
+En nuestro código, `OBC<SafeMode>` hace cumplir las propiedades 4 y 5 en tiempo de compilación.
+
+---
+
+## Ejemplos
+
+| Archivo | Concepto | Comando de ejecución |
 |------|---------|-------------|
-| `01_watchdog.rs` | Software watchdog, per-task timers | `cargo run --example 01_watchdog` |
-| `02_circuit_breaker.rs` | Circuit breaker state machine | `cargo run --example 02_circuit_breaker` |
-| `03_health_table.rs` | Shared health table, concurrent access | `cargo run --example 03_health_table` |
-| `04_supervisor.rs` | Task supervision with backoff | `cargo run --example 04_supervisor` |
-| `05_safe_state.rs` | Typestate mode management | `cargo run --example 05_safe_state` |
+| `01_watchdog.rs` | Watchdog por software, temporizadores por tarea | `cargo run --example 01_watchdog` |
+| `02_circuit_breaker.rs` | Máquina de estados del disyuntor | `cargo run --example 02_circuit_breaker` |
+| `03_health_table.rs` | Tabla de salud compartida, acceso concurrente | `cargo run --example 03_health_table` |
+| `04_supervisor.rs` | Supervisión de tareas con retroceso | `cargo run --example 04_supervisor` |
+| `05_safe_state.rs` | Gestión de modos con typestate | `cargo run --example 05_safe_state` |
 
-## Exercises
+## Ejercicios
 
-| File | Task |
+| Archivo | Tarea |
 |------|------|
-| `ex1_fdir_chain.rs` | Wire all patterns together around an ADC daemon |
-| `ex1_fdir_chain_sol.rs` | Reference solution |
+| `ex1_fdir_chain.rs` | Conectar todos los patrones alrededor de un demonio ADC |
+| `ex1_fdir_chain_sol.rs` | Solución de referencia |

@@ -1,111 +1,104 @@
-# Day 6: Rustdoc & API Documentation
+# Día 6: Rustdoc y Documentación de API
 
-## Why Documentation Matters in Aerospace
+## Por qué la Documentación es Importante en Aeroespacial
 
-In consumer software, poor docs are inconvenient. In aerospace, they can be mission-critical:
+En software de consumo, la mala documentación es inconveniente. En aeroespacial, puede ser crítica para la misión:
 
-- **Your API is a contract.** The attitude control team writing code against your packet codec has no
-  idea what assumptions you made unless you write them down. A wrong assumption means a lost packet
-  — or a lost spacecraft.
-- **Docs ARE part of the product.** ESA, NASA, and JPL software standards (e.g., JPL C Coding
-  Standard, ECSS-E-ST-40C) all require formal documentation of interfaces. Rust's rustdoc makes this
-  executable and verifiable.
-- **The reviewer is not you.** Flight software reviews involve multiple teams, safety boards, and
-  sometimes regulators. They will read your docs, not your source code.
-- **Code review latency is high.** On a spacecraft project, a question like "what happens if seq_count
-  overflows?" can take days to answer through formal channels. Good docs prevent the question.
+- **Tu API es un contrato.** El equipo de control de actitud que escribe código contra tu codec de paquetes no tiene idea de qué suposiciones hiciste, a menos que las escribas. Una suposición incorrecta significa un paquete perdido — o una nave espacial perdida.
+- **La documentación ES parte del producto.** Los estándares de software de ESA, NASA y JPL (por ejemplo, JPL C Coding Standard, ECSS-E-ST-40C) todos requieren documentación formal de interfaces. El rustdoc de Rust hace esto ejecutable y verificable.
+- **El revisor no eres tú.** Las revisiones de software de vuelo involucran múltiples equipos, juntas de seguridad y a veces reguladores. Ellos leerán tu documentación, no tu código fuente.
+- **La latencia de revisión de código es alta.** En un proyecto de nave espacial, una pregunta como "¿qué pasa si seq_count se desborda?" puede tardar días en responderse a través de canales formales. Una buena documentación previene la pregunta.
 
-The rule: **if a public item has no doc comment, it does not exist as far as other teams are concerned.**
+La regla: **si un elemento público no tiene comentario de documentación, no existe en lo que respecta a los demás equipos.**
 
 ---
 
-## Rustdoc Architecture
+## Arquitectura de Rustdoc
 
-Rustdoc is the official Rust documentation tool, built into the Rust toolchain. It works by:
+Rustdoc es la herramienta oficial de documentación de Rust, integrada en la cadena de herramientas de Rust. Funciona de la siguiente manera:
 
-1. **Parsing doc comments** (`///` and `//!`) as Markdown.
-2. **Generating HTML** from those Markdown comments, cross-linking types and items automatically.
-3. **Extracting code blocks** (` ```rust ` blocks) from doc comments and compiling them as tests.
+1. **Analizando comentarios de documentación** (`///` y `//!`) como Markdown.
+2. **Generando HTML** a partir de esos comentarios Markdown, enlazando automáticamente tipos y elementos.
+3. **Extrayendo bloques de código** (bloques ` ```rust `) de los comentarios de documentación y compilándolos como pruebas.
 
-This means documentation and tests are unified. A doc comment that describes "here is an example"
-becomes a test that verifies the example is correct.
+Esto significa que la documentación y las pruebas están unificadas. Un comentario de documentación que describe "aquí hay un ejemplo" se convierte en una prueba que verifica que el ejemplo es correcto.
 
 ```
-source code → rustdoc parser → Markdown → HTML docs
-                            ↘ code blocks → cargo test
+código fuente → analizador rustdoc → Markdown → documentación HTML
+                                  ↘ bloques de código → cargo test
 ```
 
 ---
 
-## Outer vs Inner Doc Comments
+## Comentarios de Documentación Externos vs Internos
 
 ```rust
-//! This is an INNER doc comment — documents the item it is INSIDE.
-//! Used at the top of a file to document the module/crate.
-//! Applies to: lib.rs (crate), mod.rs (module), top of a file.
+//! Este es un comentario de documentación INTERNO — documenta el elemento en el que está DENTRO.
+//! Se usa al inicio de un archivo para documentar el módulo/crate.
+//! Se aplica a: lib.rs (crate), mod.rs (módulo), inicio de un archivo.
 
-/// This is an OUTER doc comment — documents the item BELOW it.
-/// Used immediately before a struct, fn, enum, trait, const, etc.
+/// Este es un comentario de documentación EXTERNO — documenta el elemento DEBAJO de él.
+/// Se usa inmediatamente antes de un struct, fn, enum, trait, const, etc.
 pub struct MyType { ... }
 ```
 
-**Rule of thumb:**
-- `//!` at the top of `lib.rs` → documents the crate
-- `//!` at the top of `foo.rs` → documents the `foo` module
-- `///` before any `pub` item → documents that item
+**Regla general:**
+- `//!` al inicio de `lib.rs` → documenta el crate
+- `//!` al inicio de `foo.rs` → documenta el módulo `foo`
+- `///` antes de cualquier elemento `pub` → documenta ese elemento
 
 ---
 
-## Standard Doc Comment Sections
+## Secciones Estándar de Comentarios de Documentación
 
-A well-structured doc comment follows this pattern:
+Un comentario de documentación bien estructurado sigue este patrón:
 
 ```rust
-/// One-line summary. This is what appears in search results and hover tooltips.
+/// Resumen de una línea. Esto es lo que aparece en los resultados de búsqueda y en los tooltips.
 ///
-/// Optional longer description. Explain WHY, not just WHAT. Describe invariants,
-/// trade-offs, and decisions that aren't obvious from the type signature.
+/// Descripción más larga opcional. Explica el POR QUÉ, no solo el QUÉ. Describe las invariantes,
+/// compromisos y decisiones que no son obvios a partir de la firma del tipo.
 ///
-/// # Examples
+/// # Ejemplos
 ///
-/// At least one runnable example. These are compiled and run by `cargo test`.
+/// Al menos un ejemplo ejecutable. Estos son compilados y ejecutados por `cargo test`.
 ///
 /// ```rust
 /// let x = MyType::new(42)?;
 /// assert_eq!(x.value(), 42);
-/// # Ok::<(), MyError>(())  // hidden line: makes the ? operator work in doc test
+/// # Ok::<(), MyError>(())  // línea oculta: hace que el operador ? funcione en doc test
 /// ```
 ///
 /// # Panics
 ///
-/// Document when this function panics. If it never panics, say so.
-/// In safety-critical code, panics are usually forbidden — but the *promise*
-/// of "never panics" must be documented and verified.
+/// Documenta cuándo esta función entra en pánico. Si nunca entra en pánico, dilo.
+/// En código de seguridad crítica, los panics están generalmente prohibidos — pero la *promesa*
+/// de "nunca entra en pánico" debe estar documentada y verificada.
 ///
-/// # Errors
+/// # Errores
 ///
-/// Document every error variant that can be returned. Link to the error type.
-/// This is the most important section for functions returning `Result`.
+/// Documenta cada variante de error que puede ser devuelta. Enlaza al tipo de error.
+/// Esta es la sección más importante para funciones que devuelven `Result`.
 ///
-/// Returns [`MyError::InvalidInput`] if the value is out of range.
+/// Devuelve [`MyError::InvalidInput`] si el valor está fuera de rango.
 ///
 /// # Safety
 ///
-/// REQUIRED for `unsafe fn`. Describe every precondition the caller must uphold.
-/// Failure to meet these preconditions is undefined behavior.
+/// REQUERIDO para `unsafe fn`. Describe cada precondición que el llamador debe cumplir.
+/// No cumplir estas precondiciones es comportamiento indefinido.
 pub fn documented_function(value: u32) -> Result<MyType, MyError> { ... }
 ```
 
 ---
 
-## Doc Tests: Examples That Compile and Run
+## Doc Tests: Ejemplos que Compilan y se Ejecutan
 
-Every ` ```rust ` block in a doc comment is a test case:
+Cada bloque ` ```rust ` en un comentario de documentación es un caso de prueba:
 
 ```rust
-/// Parses a big-endian u16 from a byte slice.
+/// Analiza un u16 big-endian de un slice de bytes.
 ///
-/// # Examples
+/// # Ejemplos
 /// ```
 /// use my_crate::parse_u16_be;
 /// let bytes = [0x01, 0x02];
@@ -114,140 +107,140 @@ Every ` ```rust ` block in a doc comment is a test case:
 pub fn parse_u16_be(bytes: &[u8]) -> u16 { ... }
 ```
 
-Run them with: `cargo test --doc`
+Ejecútalos con: `cargo test --doc`
 
-### Hidden Lines
+### Líneas Ocultas
 
-Lines starting with `# ` are hidden in the HTML but included in the test:
+Las líneas que comienzan con `# ` están ocultas en el HTML pero se incluyen en la prueba:
 
 ```rust
 /// ```
 /// let result = fallible_fn()?;
 /// assert_eq!(result, 42);
-/// # Ok::<(), MyError>(())   // ← hidden; makes ? valid at the top level
+/// # Ok::<(), MyError>(())   // ← oculta; hace que ? sea válido en el nivel superior
 /// ```
 ```
 
-### Marked Non-Runnable
+### Marcados como No Ejecutables
 
-Use ` ```rust,no_run ` when the code requires external resources (hardware, network):
+Usa ` ```rust,no_run ` cuando el código requiere recursos externos (hardware, red):
 
 ```rust
 /// ```rust,no_run
-/// // This would open a real serial port — can't run in CI
+/// // Esto abriría un puerto serie real — no se puede ejecutar en CI
 /// let port = UartDriver::open("/dev/ttyS0")?;
 /// # Ok::<(), std::io::Error>(())
 /// ```
 ```
 
-Use ` ```rust,compile_fail ` to document that something is intentionally a compile error:
+Usa ` ```rust,compile_fail ` para documentar que algo es intencionalmente un error de compilación:
 
 ```rust
 /// ```rust,compile_fail
-/// // This must NOT compile — the APID is too large
+/// // Esto NO debe compilar — el APID es demasiado grande
 /// let hdr = CcsdsPrimaryHeader::new_tc(0xFFFF, 0, 0);
 /// ```
 ```
 
 ---
 
-## Intra-Doc Links
+## Enlaces Intra-Documentación
 
-Rustdoc auto-resolves links to other items in the same crate (or dependencies):
+Rustdoc resuelve automáticamente los enlaces a otros elementos del mismo crate (o dependencias):
 
 ```rust
-/// Returns a [`CcsdsFrame`] or [`CcsdsError::InvalidApid`].
+/// Devuelve un [`CcsdsFrame`] o [`CcsdsError::InvalidApid`].
 ///
-/// See also: [`codec::encode`] and [`codec::decode`].
+/// Ver también: [`codec::encode`] y [`codec::decode`].
 ```
 
-Use backtick-bracket syntax: `` [`TypeName`] ``, `` [`module::function`] ``.
+Usa la sintaxis de backtick con corchetes: `` [`TypeName`] ``, `` [`module::function`] ``.
 
-These are checked at compile time — a broken link is a warning (or error with `RUSTDOCFLAGS`).
+Estos se verifican en tiempo de compilación — un enlace roto es una advertencia (o error con `RUSTDOCFLAGS`).
 
 ---
 
 ## `#[doc(hidden)]`
 
-Marks an item so it does NOT appear in the generated documentation:
+Marca un elemento para que NO aparezca en la documentación generada:
 
 ```rust
 #[doc(hidden)]
-pub fn internal_helper() { ... }  // public for macro use, but not part of the API
+pub fn internal_helper() { ... }  // público para uso de macros, pero no parte de la API
 ```
 
-Use sparingly. If something is truly internal, make it `pub(crate)` instead.
+Úsalo con moderación. Si algo es verdaderamente interno, hazlo `pub(crate)` en su lugar.
 
 ---
 
 ## `#![deny(missing_docs)]`
 
-The most important doc lint for library crates. Add it at the top of `lib.rs`:
+El lint de documentación más importante para crates de biblioteca. Agrégalo al inicio de `lib.rs`:
 
 ```rust
 #![deny(missing_docs)]
 ```
 
-This makes the compiler **refuse to build** if any public item lacks a doc comment.
+Esto hace que el compilador **se niegue a compilar** si algún elemento público carece de comentario de documentación.
 
-In CI, this means undocumented APIs are a build failure, not a code review note.
+En CI, esto significa que las APIs no documentadas son un fallo de compilación, no una nota de revisión de código.
 
 ---
 
-## Building and Viewing Docs
+## Compilar y Ver la Documentación
 
 ```bash
-# Build docs for this crate only (no dependency docs — faster)
+# Compilar la documentación solo para este crate (sin deps — más rápido)
 cargo doc --no-deps
 
-# Build and open in browser
+# Compilar y abrir en el navegador
 cargo doc --no-deps --open
 
-# Build for a specific crate in a workspace
+# Compilar para un crate específico en un workspace
 cargo doc -p day6-rustdoc --no-deps --open
 
-# Run doc tests only
+# Ejecutar solo los doc tests
 cargo test --doc
 
-# Run all tests (unit + integration + doc tests)
+# Ejecutar todas las pruebas (unitarias + integración + doc tests)
 cargo test
 ```
 
 ---
 
-## CI: Treat Doc Warnings as Errors
+## CI: Tratar las Advertencias de Documentación como Errores
 
-In a real project's CI pipeline, set:
+En el pipeline de CI de un proyecto real, establece:
 
 ```bash
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 ```
 
-This makes doc warnings (broken intra-doc links, malformed Markdown) into build failures.
+Esto convierte las advertencias de documentación (enlaces intra-doc rotos, Markdown malformado) en fallos de compilación.
 
-Combined with `#![deny(missing_docs)]`, this gives you:
-- Every public item documented: enforced by compiler
-- All doc tests passing: enforced by `cargo test --doc`
-- No broken links: enforced by `RUSTDOCFLAGS="-D warnings"`
+Combinado con `#![deny(missing_docs)]`, esto te da:
+- Cada elemento público documentado: impuesto por el compilador
+- Todos los doc tests pasando: impuesto por `cargo test --doc`
+- Sin enlaces rotos: impuesto por `RUSTDOCFLAGS="-D warnings"`
 
 ---
 
-## How Good Docs Connect to the Job
+## Cómo la Buena Documentación se Conecta con el Trabajo
 
-Aerospace APIs are consumed by teams who:
-- Are in a different building, city, or country
-- Cannot interrupt you with questions during integration phases
-- Will use your code years after you've moved to another project
-- Must justify every interface decision to a safety review board
+Las APIs aeroespaciales son consumidas por equipos que:
+- Están en un edificio, ciudad o país diferente
+- No pueden interrumpirte con preguntas durante las fases de integración
+- Usarán tu código años después de que te hayas mudado a otro proyecto
+- Deben justificar cada decisión de interfaz ante una junta de revisión de seguridad
 
-Your doc comment is the closest they will get to asking you a question and getting an answer.
-Write it as if you are explaining to a competent engineer who has never seen this codebase
-and cannot contact you.
+Tu comentario de documentación es lo más cercano que tendrán a hacerte una pregunta y obtener una respuesta.
+Escríbelo como si estuvieras explicando a un ingeniero competente que nunca ha visto esta base de código
+y no puede contactarte.
 
-**Checklist for every public `fn`:**
-- [ ] One-line summary (imperative mood: "Creates a...", "Returns the...", "Parses a...")
-- [ ] At least one `# Examples` block that compiles and runs
-- [ ] `# Errors` section listing every `Err` variant
-- [ ] `# Panics` section (or explicit statement that it never panics)
-- [ ] `# Safety` section if the function is `unsafe`
-- [ ] Intra-doc links for all types mentioned in prose
+**Lista de verificación para cada `fn` pública:**
+- [ ] Resumen de una línea (modo imperativo: "Crea un...", "Devuelve el...", "Analiza un...")
+- [ ] Al menos un bloque `# Ejemplos` que compile y se ejecute
+- [ ] Sección `# Errores` listando cada variante `Err`
+- [ ] Sección `# Panics` (o declaración explícita de que nunca entra en pánico)
+- [ ] Sección `# Safety` si la función es `unsafe`
+- [ ] Enlaces intra-doc para todos los tipos mencionados en el texto

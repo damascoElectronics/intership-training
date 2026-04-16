@@ -1,14 +1,14 @@
-// Day 1, Example 2: Spawning Tasks with tokio::spawn
+// Día 1, Ejemplo 2: Lanzamiento de Tareas con tokio::spawn
 //
-// In FreeRTOS you create tasks with xTaskCreate() and they run independently.
-// tokio::spawn() is the equivalent: it creates a new concurrent async task.
+// En FreeRTOS creas tareas con xTaskCreate() y se ejecutan de forma independiente.
+// tokio::spawn() es el equivalente: crea una nueva tarea async concurrente.
 //
-// Key difference from FreeRTOS:
-// - FreeRTOS tasks are stack-allocated, identified by a task handle
-// - Tokio tasks are heap-allocated state machines, returned as JoinHandle<T>
-// - JoinHandle lets you await the result or cancel the task
+// Diferencia clave respecto a FreeRTOS:
+// - Las tareas de FreeRTOS se asignan en pila, identificadas por un handle de tarea
+// - Las tareas de Tokio son máquinas de estado en heap, devueltas como JoinHandle<T>
+// - JoinHandle permite awaitar el resultado o cancelar la tarea
 //
-// Run with:
+// Ejecutar con:
 //   cargo run --example 02_spawn_tasks
 
 use std::time::Duration;
@@ -17,93 +17,93 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() {
-    println!("=== Example 02: Spawning Tasks ===\n");
+    println!("=== Ejemplo 02: Lanzamiento de Tareas ===\n");
 
-    // --- Part 1: Basic spawn and JoinHandle ---
+    // --- Parte 1: spawn básico y JoinHandle ---
     demo_basic_spawn().await;
 
-    // --- Part 2: Awaiting task results ---
+    // --- Parte 2: Esperar resultados de tareas ---
     demo_join_handle().await;
 
-    // --- Part 3: CancellationToken for clean shutdown ---
+    // --- Parte 3: CancellationToken para apagado limpio ---
     demo_cancellation().await;
 
-    // --- Part 4: Panic propagation ---
+    // --- Parte 4: Propagación de panics ---
     demo_panic_handling().await;
 
-    println!("\nDone.");
+    println!("\nListo.");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 1: Basic spawn
+// Parte 1: spawn básico
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn demo_basic_spawn() {
-    println!("--- Part 1: Basic spawn ---");
+    println!("--- Parte 1: spawn básico ---");
 
-    // tokio::spawn() creates a NEW task that runs concurrently with the current
-    // task. The current task does NOT pause — both tasks run at the same time
-    // (or interleave on a single-threaded executor).
+    // tokio::spawn() crea una NUEVA tarea que se ejecuta concurrentemente con la
+    // tarea actual. La tarea actual NO se pausa — ambas tareas se ejecutan al mismo tiempo
+    // (o se entrelazan en un ejecutor monohilo).
     //
-    // The spawned closure must be 'static + Send:
-    // - 'static: the task might outlive the current stack frame, so it can't
-    //   borrow local variables (unless you move them in)
-    // - Send: the task can be moved to any worker thread at any .await point
+    // El closure lanzado debe ser 'static + Send:
+    // - 'static: la tarea puede sobrevivir al marco de pila actual, así que no puede
+    //   tomar prestadas variables locales (a menos que las muevas)
+    // - Send: la tarea puede moverse a cualquier hilo worker en cualquier punto .await
     let handle: JoinHandle<()> = tokio::spawn(async {
-        // This runs concurrently with the spawning task
+        // Esto se ejecuta concurrentemente con la tarea que lanza
         tokio::time::sleep(Duration::from_millis(20)).await;
-        println!("  Spawned task 1: woke up after 20ms");
+        println!("  Tarea lanzada 1: despertó tras 20ms");
     });
 
     let handle2: JoinHandle<()> = tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(10)).await;
-        println!("  Spawned task 2: woke up after 10ms (runs first despite spawning second!)");
+        println!("  Tarea lanzada 2: despertó tras 10ms (¡termina primero aunque se lanzó segunda!)");
     });
 
-    // .await on a JoinHandle waits for the task to complete.
-    // Here we see task 2 finish before task 1 even though we spawned task 1 first —
-    // because both run concurrently and task 2 has a shorter sleep.
-    handle.await.expect("Task 1 panicked");
-    handle2.await.expect("Task 2 panicked");
+    // .await en un JoinHandle espera a que la tarea se complete.
+    // Aquí vemos que la tarea 2 termina antes que la tarea 1 aunque lanzamos la tarea 1 primero —
+    // porque ambas se ejecutan concurrentemente y la tarea 2 tiene un sleep más corto.
+    handle.await.expect("La tarea 1 tuvo un panic");
+    handle2.await.expect("La tarea 2 tuvo un panic");
 
-    println!("  Both tasks finished\n");
+    println!("  Ambas tareas terminaron\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 2: Getting a return value from a spawned task
+// Parte 2: Obtener un valor de retorno de una tarea lanzada
 // ─────────────────────────────────────────────────────────────────────────────
 
 async fn demo_join_handle() {
-    println!("--- Part 2: JoinHandle return values ---");
+    println!("--- Parte 2: Valores de retorno con JoinHandle ---");
 
-    // JoinHandle<T> is generic over the task's return type.
-    // Like a FreeRTOS task that writes its result to a shared variable,
-    // but type-safe: you can't misinterpret the return type.
+    // JoinHandle<T> es genérico sobre el tipo de retorno de la tarea.
+    // Como una tarea de FreeRTOS que escribe su resultado en una variable compartida,
+    // pero con seguridad de tipos: no puedes malinterpretar el tipo de retorno.
     let handle: JoinHandle<u64> = tokio::spawn(async {
-        // Simulate a computation that takes some time (e.g., reading a sensor)
+        // Simular un cómputo que tarda algo (p. ej., leer un sensor)
         tokio::time::sleep(Duration::from_millis(5)).await;
         let reading = 42u64;
-        println!("  Worker computed sensor reading: {reading}");
-        reading // Return value from the spawned task
+        println!("  Worker computó lectura del sensor: {reading}");
+        reading // Valor de retorno de la tarea lanzada
     });
 
-    // JoinHandle::await returns Result<T, JoinError>
-    // - Ok(value): task completed normally, value is the return value
-    // - Err(join_error): task panicked or was cancelled
+    // JoinHandle::await retorna Result<T, JoinError>
+    // - Ok(valor): la tarea se completó normalmente, valor es el retorno
+    // - Err(join_error): la tarea tuvo un panic o fue cancelada
     let result: Result<u64, tokio::task::JoinError> = handle.await;
-    let value = result.expect("Worker task panicked");
-    println!("  Main task received: {value}\n");
+    let value = result.expect("La tarea worker tuvo un panic");
+    println!("  Tarea principal recibió: {value}\n");
 
-    // Run multiple tasks concurrently and wait for ALL of them.
-    // tokio::join! is the macro version — drives all futures concurrently,
-    // returns when ALL complete.
+    // Ejecutar múltiples tareas concurrentemente y esperar a TODAS.
+    // tokio::join! es la versión macro — conduce todos los futures concurrentemente,
+    // retorna cuando TODOS se completan.
     let (a, b, c) = tokio::join!(
         tokio::spawn(async { compute(1).await }),
         tokio::spawn(async { compute(2).await }),
         tokio::spawn(async { compute(3).await }),
     );
     println!(
-        "  Parallel results: {}, {}, {}",
+        "  Resultados en paralelo: {}, {}, {}",
         a.unwrap(),
         b.unwrap(),
         c.unwrap()
@@ -117,110 +117,110 @@ async fn compute(n: u64) -> u64 {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 3: CancellationToken — the idiomatic way to stop tasks
+// Parte 3: CancellationToken — la forma idiomática de detener tareas
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// In FreeRTOS you might set a volatile global `bool keep_running = false` and
-// have tasks check it in their loop. CancellationToken is the type-safe
-// async-aware version of that pattern.
+// En FreeRTOS podrías establecer un global volátil `bool keep_running = false` y
+// hacer que las tareas lo comprueben en su bucle. CancellationToken es la versión
+// type-safe y async-aware de ese patrón.
 //
-// It's shareable: clone it and give one clone to each task.
-// It's composable: a child_token() cancels when either the child or parent cancels.
+// Es compartible: clónalo y da un clon a cada tarea.
+// Es composable: un child_token() se cancela cuando se cancela el hijo o el padre.
 
 async fn demo_cancellation() {
-    println!("--- Part 3: CancellationToken ---");
+    println!("--- Parte 3: CancellationToken ---");
 
-    // Create the root token. Cancelling this cancels all clones.
+    // Crear el token raíz. Cancelarlo cancela todos los clones.
     let token = CancellationToken::new();
 
-    // Clone the token to give to the spawned task.
-    // The clone and original are linked — cancelling either one
-    // does NOT cancel the other, but cancelling the ROOT token
-    // does cancel child tokens created with .child_token().
+    // Clonar el token para dárselo a la tarea lanzada.
+    // El clon y el original están vinculados — cancelar cualquiera
+    // NO cancela al otro, pero cancelar el token RAÍZ
+    // sí cancela los tokens hijo creados con .child_token().
     let task_token = token.clone();
 
     let handle = tokio::spawn(async move {
-        println!("  Background task: starting polling loop");
+        println!("  Tarea en segundo plano: iniciando bucle de sondeo");
         let mut count = 0u32;
 
         loop {
-            // tokio::select! races multiple futures.
-            // Whichever completes first wins; the others are dropped (cancelled).
-            // Here we race: "did the token get cancelled?" vs "did the timer fire?"
+            // tokio::select! compite múltiples futures.
+            // El que termina primero gana; los demás se descartan (cancelan).
+            // Aquí competimos: "¿se canceló el token?" vs "¿disparó el temporizador?"
             tokio::select! {
-                // The cancellation branch: notice the token is "consumed" by this check.
-                // cancelled() returns a future that resolves when cancel() is called.
+                // Rama de cancelación: el token es "consumido" por esta comprobación.
+                // cancelled() retorna un future que se resuelve cuando se llama cancel().
                 _ = task_token.cancelled() => {
-                    println!("  Background task: cancellation received, stopping (count={count})");
+                    println!("  Tarea en segundo plano: cancelación recibida, deteniendo (count={count})");
                     break;
                 }
-                // The work branch: do one unit of work per 15ms interval
+                // Rama de trabajo: hacer una unidad de trabajo cada 15ms
                 _ = tokio::time::sleep(Duration::from_millis(15)) => {
                     count += 1;
-                    println!("  Background task: tick {count}");
+                    println!("  Tarea en segundo plano: tick {count}");
                 }
             }
         }
     });
 
-    // Let the task run for a bit
+    // Dejar que la tarea se ejecute un rato
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    // Signal shutdown. All clones of `token` will now return from .cancelled().
-    println!("  Main: cancelling token");
+    // Señalar el apagado. Todos los clones de `token` retornarán de .cancelled().
+    println!("  Main: cancelando token");
     token.cancel();
 
-    // Wait for the task to acknowledge and exit
-    handle.await.expect("Background task panicked");
-    println!("  Task exited cleanly\n");
+    // Esperar a que la tarea reconozca y salga
+    handle.await.expect("La tarea en segundo plano tuvo un panic");
+    println!("  Tarea salió limpiamente\n");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Part 4: What happens when a spawned task panics
+// Parte 4: Qué ocurre cuando una tarea lanzada tiene un panic
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Unlike FreeRTOS where a task panic (HardFault) might crash the whole system,
-// tokio isolates task panics: the panic is caught at the task boundary and
-// reported as a JoinError when you await the handle.
+// A diferencia de FreeRTOS donde un panic de tarea (HardFault) podría colapsar todo el sistema,
+// tokio aísla los panics de tareas: el panic se captura en el límite de la tarea y
+// se informa como JoinError cuando haces await del handle.
 //
-// This is important for daemon resilience: a panic in one task shouldn't
-// bring down the entire daemon.
+// Esto es importante para la resiliencia del daemon: un panic en una tarea no debería
+// derribar todo el daemon.
 
 async fn demo_panic_handling() {
-    println!("--- Part 4: Panic propagation ---");
+    println!("--- Parte 4: Propagación de panics ---");
 
     let handle = tokio::spawn(async {
         tokio::time::sleep(Duration::from_millis(1)).await;
-        // This panic is caught at the task boundary, not at the spawning site
-        panic!("Simulated sensor driver panic!");
+        // Este panic se captura en el límite de la tarea, no en el punto de lanzamiento
+        panic!("¡Panic simulado del driver de sensor!");
     });
 
     match handle.await {
-        Ok(()) => println!("  Task completed normally"),
+        Ok(()) => println!("  Tarea completada normalmente"),
         Err(join_error) if join_error.is_panic() => {
-            // The panic message is captured. We can log it and decide whether
-            // to restart the task, alert operations, or shut down gracefully.
-            println!("  Task panicked (caught at boundary): {join_error}");
-            println!("  Daemon continues running — only this task died");
+            // El mensaje del panic se captura. Podemos registrarlo y decidir si
+            // reiniciar la tarea, alertar a operaciones, o apagar limpiamente.
+            println!("  Tarea tuvo panic (capturado en límite): {join_error}");
+            println!("  El daemon continúa ejecutándose — solo murió esta tarea");
         }
         Err(join_error) => {
-            // This branch handles task cancellation via handle.abort()
-            println!("  Task was cancelled: {join_error}");
+            // Esta rama maneja la cancelación de tareas via handle.abort()
+            println!("  Tarea fue cancelada: {join_error}");
         }
     }
 
-    // Show that aborting a task also produces a JoinError
+    // Mostrar que abortar una tarea también produce un JoinError
     let handle = tokio::spawn(async {
-        tokio::time::sleep(Duration::from_secs(100)).await; // would run forever
-        unreachable!("Should be aborted before here");
+        tokio::time::sleep(Duration::from_secs(100)).await; // se ejecutaría para siempre
+        unreachable!("Debería ser abortado antes de aquí");
     });
 
-    // Abort the task externally (like killing a FreeRTOS task with vTaskDelete)
+    // Abortar la tarea externamente (como matar una tarea de FreeRTOS con vTaskDelete)
     handle.abort();
 
     match handle.await {
-        Ok(()) => println!("  Task completed normally (unlikely after abort)"),
-        Err(e) if e.is_cancelled() => println!("  Task was aborted (as expected)\n"),
-        Err(e) => println!("  Unexpected: {e}\n"),
+        Ok(()) => println!("  Tarea completada normalmente (improbable tras abort)"),
+        Err(e) if e.is_cancelled() => println!("  Tarea fue abortada (como se esperaba)\n"),
+        Err(e) => println!("  Inesperado: {e}\n"),
     }
 }

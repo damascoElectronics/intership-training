@@ -1,77 +1,77 @@
-//! Example 01 — Privilege dropping via setuid/setgid + PR_SET_NO_NEW_PRIVS
+//! Ejemplo 01 — Descarte de privilegios mediante setuid/setgid + PR_SET_NO_NEW_PRIVS
 //!
-//! The principle of least privilege: a daemon should hold only the capabilities
-//! it NEEDS, for only as LONG as it needs them.
+//! El principio de mínimo privilegio: un daemon debe mantener solo las capacidades
+//! que NECESITA, durante el tiempo que las necesita.
 //!
-//! Pattern for a real OBC daemon:
-//!   1. Start as root (to open /dev/rawdevice, bind port 0-1023, etc.)
-//!   2. Do the privileged operations
-//!   3. Drop to an unprivileged user
-//!   4. Set PR_SET_NO_NEW_PRIVS so child processes cannot regain privileges
+//! Patrón para un daemon OBC real:
+//!   1. Arrancar como root (para abrir /dev/rawdevice, enlazar puerto 0-1023, etc.)
+//!   2. Realizar las operaciones privilegiadas
+//!   3. Descender a un usuario sin privilegios
+//!   4. Establecer PR_SET_NO_NEW_PRIVS para que los procesos hijos no puedan recuperar privilegios
 //!
-//! Run with:  cargo run --example 01_capability_drop
+//! Ejecutar con:  cargo run --example 01_capability_drop
 
 use nix::unistd::{Uid, Gid, setuid, setgid, getuid, getgid};
 
-/// Sets PR_SET_NO_NEW_PRIVS (Linux-specific).
+/// Establece PR_SET_NO_NEW_PRIVS (específico de Linux).
 ///
-/// After this call, the process and all its children can never gain new
-/// privileges — even if they execute a setuid binary.
+/// Tras esta llamada, el proceso y todos sus hijos nunca podrán obtener nuevos
+/// privilegios — aunque ejecuten un binario setuid.
 fn set_no_new_privs() -> nix::Result<()> {
     // prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
     nix::sys::prctl::set_no_new_privs()
 }
 
-/// Drops root privileges by switching to uid/gid `nobody` (65534).
+/// Descarta privilegios de root cambiando a uid/gid `nobody` (65534).
 ///
-/// setgid must be called BEFORE setuid, because you need root to change GID.
+/// setgid debe llamarse ANTES que setuid, porque se necesita root para cambiar el GID.
 fn drop_to_nobody() -> nix::Result<()> {
     let nobody_uid = Uid::from_raw(65534);
     let nobody_gid = Gid::from_raw(65534);
-    setgid(nobody_gid)?; // must happen first
+    setgid(nobody_gid)?; // debe ocurrir primero
     setuid(nobody_uid)?;
     Ok(())
 }
 
 fn main() {
-    println!("=== Privilege Dropping Demo ===\n");
+    println!("=== Demo de descarte de privilegios ===\n");
 
-    println!("Before: uid={} gid={}", getuid(), getgid());
+    println!("Antes: uid={} gid={}", getuid(), getgid());
 
-    // Simulate doing something privileged here
-    // (e.g., opening /dev/mem, binding to a raw socket)
-    println!("Performing privileged initialization... (simulated)");
+    // Simular aquí una operación privilegiada
+    // (p. ej., abrir /dev/mem, enlazar a un socket raw)
+    println!("Realizando inicialización privilegiada... (simulado)");
 
-    // Set no-new-privs before dropping privileges
+    // Establecer no-new-privs antes de descartar privilegios
     match set_no_new_privs() {
-        Ok(()) => println!("PR_SET_NO_NEW_PRIVS: set"),
-        Err(e) => println!("PR_SET_NO_NEW_PRIVS failed (expected if not Linux): {e}"),
+        Ok(()) => println!("PR_SET_NO_NEW_PRIVS: establecido"),
+        Err(e) => println!("PR_SET_NO_NEW_PRIVS falló (esperado si no es Linux): {e}"),
     }
 
-    // Attempt to drop to nobody
+    // Intentar descender a nobody
     if getuid().is_root() {
         match drop_to_nobody() {
             Ok(()) => {
-                println!("After drop: uid={} gid={}", getuid(), getgid());
-                println!("Now running as unprivileged user.");
+                println!("Tras el descarte: uid={} gid={}", getuid(), getgid());
+                println!("Ahora ejecutándose como usuario sin privilegios.");
             }
-            Err(e) => println!("drop_to_nobody failed: {e}"),
+            Err(e) => println!("drop_to_nobody falló: {e}"),
         }
     } else {
-        println!("Not running as root — cannot demonstrate full drop.");
-        println!("Current uid={} gid={}", getuid(), getgid());
+        println!("No se ejecuta como root — no se puede demostrar el descarte completo.");
+        println!("uid actual={} gid actual={}", getuid(), getgid());
         println!();
-        println!("In a real daemon you would:");
-        println!("  1. Start as root (systemd can do this)");
-        println!("  2. Open privileged resources");
-        println!("  3. Drop to a dedicated daemon user (e.g., 'obcdaemon')");
-        println!("  4. The daemon's permissions are now permanently reduced");
+        println!("En un daemon real se haría:");
+        println!("  1. Arrancar como root (systemd puede hacer esto)");
+        println!("  2. Abrir los recursos privilegiados");
+        println!("  3. Descender a un usuario daemon dedicado (p. ej., 'obcdaemon')");
+        println!("  4. Los permisos del daemon quedan reducidos permanentemente");
     }
 
     println!();
-    println!("Linux capabilities (more granular than root/non-root):");
-    println!("  CAP_SYS_RAWIO  → access to raw hardware memory/ports");
-    println!("  CAP_NET_RAW    → raw sockets (needed for CAN bus access)");
-    println!("  CAP_SYS_TIME   → set system clock (PUS Service 9)");
-    println!("  Use `capsh` or the `caps` crate for fine-grained control.");
+    println!("Capacidades Linux (más granulares que root/no-root):");
+    println!("  CAP_SYS_RAWIO  → acceso a memoria/puertos hardware raw");
+    println!("  CAP_NET_RAW    → sockets raw (necesario para acceso al bus CAN)");
+    println!("  CAP_SYS_TIME   → establecer el reloj del sistema (Servicio PUS 9)");
+    println!("  Usar `capsh` o el crate `caps` para control de grano fino.");
 }

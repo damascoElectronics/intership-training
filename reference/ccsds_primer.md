@@ -1,9 +1,9 @@
-# CCSDS Space Packet Protocol — Primer
+# CCSDS Space Packet Protocol — Introducción
 **CCSDS 133.0-B-2**
 
 ---
 
-## Primary Header Bit Layout (6 octets, always present)
+## Disposición de Bits de la Cabecera Primaria (6 octetos, siempre presente)
 
 ```
 Byte 0          Byte 1          Byte 2          Byte 3          Byte 4          Byte 5
@@ -17,49 +17,49 @@ Byte 0          Byte 1          Byte 2          Byte 3          Byte 4          
 Full APID = Byte0[2:0] concatenated with Byte1[7:0] = 11 bits total
 ```
 
-### Field Summary
+### Resumen de Campos
 
-| Field | Bits | Values | Notes |
-|-------|------|--------|-------|
-| Version | 3 | Always `0b000` | CCSDS version 1 |
-| Packet Type | 1 | `0`=TM, `1`=TC | TM=downlink, TC=uplink |
-| Sec Hdr Flag | 1 | `1` if PUS | PUS always sets this |
-| APID | 11 | `0x000`–`0x7FE` | `0x7FF` reserved for idle |
-| Seq Flags | 2 | `11`=standalone, `01`=first, `10`=last, `00`=continuation | Most packets are standalone |
-| Seq Count | 14 | `0x0000`–`0x3FFF` | Per-APID, wraps at 0x3FFF |
-| Data Length | 16 | `data_octets - 1` | Minimum 0 (1 byte of data) |
+| Campo | Bits | Valores | Notas |
+|-------|------|---------|-------|
+| Version | 3 | Siempre `0b000` | CCSDS versión 1 |
+| Packet Type | 1 | `0`=TM, `1`=TC | TM=enlace descendente, TC=enlace ascendente |
+| Sec Hdr Flag | 1 | `1` si es PUS | PUS siempre activa este bit |
+| APID | 11 | `0x000`–`0x7FE` | `0x7FF` reservado para paquetes de relleno |
+| Seq Flags | 2 | `11`=independiente, `01`=primero, `10`=último, `00`=continuación | La mayoría de los paquetes son independientes |
+| Seq Count | 14 | `0x0000`–`0x3FFF` | Por APID, reinicia al llegar a 0x3FFF |
+| Data Length | 16 | `data_octets - 1` | Mínimo 0 (1 byte de datos) |
 
 ---
 
-## APID Allocation (example for a small OBC)
+## Asignación de APID (ejemplo para un OBC pequeño)
 
 ```
-APID 0x000 — undefined / not used
-APID 0x001 — On-Board Operations service (PUS 17)
-APID 0x002 — Sensor subsystem
-APID 0x003 — Housekeeping service (PUS 3)
-APID 0x004 — Communications subsystem
-APID 0x100 — Attitude Control System
-APID 0x200 — Power Management
-APID 0x300 — Thermal Control
+APID 0x000 — indefinido / no usado
+APID 0x001 — Servicio de operaciones a bordo (PUS 17)
+APID 0x002 — Subsistema de sensores
+APID 0x003 — Servicio de monitoreo (PUS 3)
+APID 0x004 — Subsistema de comunicaciones
+APID 0x100 — Sistema de control de actitud
+APID 0x200 — Gestión de energía
+APID 0x300 — Control térmico
 ...
-APID 0x7FF — IDLE (fill) packet — always discard
+APID 0x7FF — Paquete IDLE (de relleno) — descartar siempre
 ```
 
 ---
 
-## Sequence Flags
+## Indicadores de Secuencia
 
-| Bits | Meaning |
-|------|---------|
-| `11` | Standalone — single-packet message (most common) |
-| `01` | First segment of a multi-packet message |
-| `10` | Last segment |
-| `00` | Continuation segment |
+| Bits | Significado |
+|------|-------------|
+| `11` | Independiente — mensaje de un solo paquete (el más común) |
+| `01` | Primer segmento de un mensaje multi-paquete |
+| `10` | Último segmento |
+| `00` | Segmento de continuación |
 
 ---
 
-## PUS-C Packet Layout (on top of primary header)
+## Estructura del Paquete PUS-C (sobre la cabecera primaria)
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
@@ -78,24 +78,24 @@ APID 0x7FF — IDLE (fill) packet — always discard
 
 ---
 
-## On-Board Time (OBT) — CUC Format
+## Tiempo a Bordo (OBT) — Formato CUC
 
-| Field | Bytes | Content |
-|-------|-------|---------|
-| Coarse | 4 | Seconds since mission epoch (usually J2000 or UNIX epoch) |
-| Fine | 2 | Sub-second ticks (65536 ticks/second) |
-
----
-
-## Key Rules
-1. **APID** is the "address" — route packets by APID, not by service/subservice
-2. **Sequence count** increments per-APID; gaps indicate lost packets
-3. **CRC** covers everything from primary header through application data (not the CRC itself)
-4. **Idle packets** (APID 0x7FF) are fill and must be silently discarded
-5. **Standalone** is correct for 99% of packets; segmentation is rare
+| Campo | Bytes | Contenido |
+|-------|-------|-----------|
+| Coarse | 4 | Segundos desde el instante de referencia de la misión (normalmente J2000 o época UNIX) |
+| Fine | 2 | Fracciones de segundo (65536 tics/segundo) |
 
 ---
 
-## References
-- CCSDS 133.0-B-2 (free download from public.ccsds.org)
-- ECSS-E-ST-70-41C (PUS-C services, requires ECSS membership or purchase)
+## Reglas Clave
+1. El **APID** es la "dirección" — enrutar paquetes por APID, no por servicio/subservicio
+2. El **contador de secuencia** se incrementa por APID; los saltos indican paquetes perdidos
+3. El **CRC** cubre desde la cabecera primaria hasta los datos de aplicación (sin incluir el propio CRC)
+4. Los **paquetes de relleno** (APID 0x7FF) son de relleno y deben descartarse silenciosamente
+5. El modo **independiente** es correcto para el 99% de los paquetes; la segmentación es poco frecuente
+
+---
+
+## Referencias
+- CCSDS 133.0-B-2 (descarga gratuita desde public.ccsds.org)
+- ECSS-E-ST-70-41C (servicios PUS-C, requiere membresía o compra en ECSS)

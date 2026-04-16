@@ -1,13 +1,13 @@
 fn main() {
-    // Tell cargo to compile our C library.
-    // The cc crate handles compiler flags, include paths, and object linking
-    // so you don't have to write a Makefile.
+    // Indica a cargo que compile nuestra biblioteca C.
+    // El crate cc maneja los indicadores del compilador, rutas de inclusión y enlace de objetos
+    // para que no tengas que escribir un Makefile.
     cc::Build::new()
         .file("c_libs/ccsds_framer.c")
         .compile("ccsds_framer");
 
-    // Tell cargo to rerun this build script if any C files change.
-    // Without these lines, cargo won't know to recompile when you edit the C code.
+    // Indica a cargo que vuelva a ejecutar este script de construcción si algún archivo C cambia.
+    // Sin estas líneas, cargo no sabrá que debe recompilar cuando edites el código C.
     println!("cargo:rerun-if-changed=c_libs/ccsds_framer.c");
     println!("cargo:rerun-if-changed=c_libs/ccsds_framer.h");
 }

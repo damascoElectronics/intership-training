@@ -1,22 +1,22 @@
-# Unsafe Audit Template
+# Plantilla de Auditoría Unsafe
 
-Copy this template for every `unsafe` block in your codebase.
-
----
-
-## The 5 Categories of `unsafe` in Rust
-
-| Category | What it allows | When to use |
-|----------|----------------|-------------|
-| Raw pointer dereference | `*ptr` read/write | Hardware register access, buffer management |
-| FFI call | `extern "C" { fn foo(); }` | C driver integration |
-| `static mut` access | Read/write global mutable state | Embedded no-std contexts only |
-| Implementing unsafe trait | `unsafe impl Send for Foo` | When you guarantee thread safety manually |
-| Inline assembly | `asm!("...")` | Very low-level hardware init (VTOR, etc.) |
+Copiar esta plantilla para cada bloque `unsafe` en la base de código.
 
 ---
 
-## SAFETY Comment Template
+## Las 5 Categorías de `unsafe` en Rust
+
+| Categoría | Qué permite | Cuándo usar |
+|-----------|-------------|-------------|
+| Desreferencia de puntero crudo | Lectura/escritura `*ptr` | Acceso a registros de hardware, gestión de buffers |
+| Llamada FFI | `extern "C" { fn foo(); }` | Integración de controladores en C |
+| Acceso a `static mut` | Lectura/escritura de estado global mutable | Solo en contextos embebidos no-std |
+| Implementar trait unsafe | `unsafe impl Send for Foo` | Cuando se garantiza la seguridad de hilos manualmente |
+| Ensamblador en línea | `asm!("...")` | Inicialización de hardware de muy bajo nivel (VTOR, etc.) |
+
+---
+
+## Plantilla de Comentario SAFETY
 
 ```rust
 // SAFETY: <one-line summary>
@@ -30,9 +30,9 @@ unsafe { ... }
 
 ---
 
-## Examples for Each Category
+## Ejemplos por Categoría
 
-### Raw pointer dereference
+### Desreferencia de puntero crudo
 ```rust
 // SAFETY: `base_ptr` is a valid, properly aligned pointer to a memory-mapped
 // peripheral register block, as established by the linker script.
@@ -43,7 +43,7 @@ unsafe { ... }
 let val = unsafe { base_ptr.add(REG_OFFSET).read_volatile() };
 ```
 
-### FFI call
+### Llamada FFI
 ```rust
 // SAFETY: `cstr.as_ptr()` is valid and null-terminated (guaranteed by CString).
 // `ccsds_pack` reads the pointer value but does not store it or free it.
@@ -62,7 +62,7 @@ let rc = unsafe { ccsds_pack(&mut raw, apid, seq_count, data_len, is_tc) };
 unsafe { INIT_TABLE[idx] = value; }
 ```
 
-### Unsafe trait
+### Trait unsafe
 ```rust
 // SAFETY: SensorFrame is #[repr(C)] and contains only Copy types with no
 // padding (verified by compile-time assert below).
@@ -75,10 +75,10 @@ const _: () = assert!(std::mem::size_of::<SensorFrame>() == 16);
 
 ---
 
-## Audit Process for a PR
+## Proceso de Auditoría para una PR
 
-1. `grep -rn "unsafe" src/` — list all unsafe blocks
-2. For each: does it have a `// SAFETY:` comment?
-3. Is the invariant actually upheld? (read the surrounding code)
-4. Is there a safe alternative? (if yes, use it)
-5. Add to `unsafe_count` metric in CI if tracking technical debt
+1. `grep -rn "unsafe" src/` — listar todos los bloques unsafe
+2. Para cada uno: ¿tiene un comentario `// SAFETY:`?
+3. ¿El invariante se mantiene realmente? (leer el código circundante)
+4. ¿Existe una alternativa segura? (si la hay, usarla)
+5. Agregar a la métrica `unsafe_count` en CI si se hace seguimiento de deuda técnica

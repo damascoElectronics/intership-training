@@ -1,55 +1,55 @@
-//! # day6-rustdoc — CCSDS Frame Codec
+//! # day6-rustdoc — Codec de Tramas CCSDS
 //!
-//! A demonstration crate for the **Week 2, Day 6** rustdoc training module.
+//! Un crate de demostración para el módulo de entrenamiento de rustdoc de la **Semana 2, Día 6**.
 //!
-//! This crate implements a minimal CCSDS Space Packet primary header codec —
-//! enough real spacecraft domain code to make the documentation examples
-//! meaningful, while remaining small enough to read in one sitting.
+//! Este crate implementa un codec mínimo de cabecera primaria de Space Packet CCSDS —
+//! suficiente código real del dominio aeroespacial para que los ejemplos de documentación
+//! sean significativos, mientras permanece lo suficientemente pequeño para leerlo de una vez.
 //!
-//! ## Purpose
+//! ## Propósito
 //!
-//! This crate exists to show:
-//! - How to write doc comments that meet aerospace documentation standards
-//! - How doc tests work and why they matter
-//! - How `#![deny(missing_docs)]` enforces documentation coverage
+//! Este crate existe para mostrar:
+//! - Cómo escribir comentarios de documentación que cumplan con los estándares de documentación aeroespacial
+//! - Cómo funcionan los doc tests y por qué son importantes
+//! - Cómo `#![deny(missing_docs)]` impone la cobertura de documentación
 //!
-//! ## Modules
+//! ## Módulos
 //!
-//! | Module | Purpose |
-//! |--------|---------|
-//! | [`frame`] | [`frame::CcsdsPrimaryHeader`] type and field accessors |
-//! | [`error`] | [`error::CcsdsError`] error variants |
-//! | [`codec`] | [`codec::encode`] / [`codec::decode`] byte serialization |
+//! | Módulo | Propósito |
+//! |--------|-----------|
+//! | [`frame`] | Tipo [`frame::CcsdsPrimaryHeader`] y accesores de campos |
+//! | [`error`] | Variantes de error [`error::CcsdsError`] |
+//! | [`codec`] | Serialización de bytes [`codec::encode`] / [`codec::decode`] |
 //!
-//! ## Quick Start
+//! ## Inicio Rápido
 //!
 //! ```rust
 //! use day6_rustdoc::frame::CcsdsPrimaryHeader;
 //! use day6_rustdoc::codec::{encode, decode};
 //!
-//! // Build a TC header for APID 0x100, sequence count 0, data length 4
+//! // Construir una cabecera TC para APID 0x100, conteo de secuencia 0, longitud de datos 4
 //! let hdr = CcsdsPrimaryHeader::new_tc(0x100, 0, 4)?;
 //! assert!(hdr.is_tc());
 //! assert_eq!(hdr.apid(), 0x100);
 //!
-//! // Round-trip: encode to bytes and decode back
+//! // Ida y vuelta: codificar a bytes y decodificar de vuelta
 //! let bytes = encode(&hdr);
 //! let decoded = decode(&bytes)?;
 //! assert_eq!(decoded, hdr);
 //! # Ok::<(), day6_rustdoc::error::CcsdsError>(())
 //! ```
 //!
-//! ## References
+//! ## Referencias
 //!
 //! - CCSDS 133.0-B-2: *Space Packet Protocol*, Blue Book
 //! - ECSS-E-ST-70-41C: *Packet Utilisation Standard (PUS-C)*
 
-// Deny missing docs on all public items.
+// Denegar documentación faltante en todos los elementos públicos.
 //
-// WHY: In a library crate used by other teams (ground software, OBSW, test harness),
-// every undocumented public item is a gap in the interface contract. Making this a
-// compile error — not just a lint warning — ensures documentation coverage can never
-// silently regress.
+// POR QUÉ: En un crate de biblioteca usado por otros equipos (software de tierra, OBSW, arnés de pruebas),
+// cada elemento público no documentado es una brecha en el contrato de interfaz. Hacer de esto un
+// error de compilación — no solo una advertencia de lint — garantiza que la cobertura de documentación
+// nunca pueda retroceder silenciosamente.
 #![deny(missing_docs)]
 
 pub mod codec;

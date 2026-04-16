@@ -1,22 +1,22 @@
-# Reference Materials
+# Materiales de Referencia
 
-Quick-access cheat sheets and decision guides.
+Hojas de referencia rápida y guías de decisión.
 
-| File | What it contains |
-|------|-----------------|
-| [`ccsds_primer.md`](ccsds_primer.md) | CCSDS primary header bit layout, APID allocation, sequence flags, OBT format |
-| [`pus_service_catalog.md`](pus_service_catalog.md) | PUS-C service table: mandatory services, TC/TM subservices, common mistakes |
-| [`ipc_decision_matrix.md`](ipc_decision_matrix.md) | When to use UDS vs FIFO vs POSIX MQ vs shared memory vs D-Bus |
-| [`rust_ffi_checklist.md`](rust_ffi_checklist.md) | Pre-merge checklist for any code crossing the Rust/C boundary |
-| [`unsafe_audit_template.md`](unsafe_audit_template.md) | SAFETY comment templates for all 5 categories of unsafe |
+| Archivo | Qué contiene |
+|---------|--------------|
+| [`ccsds_primer.md`](ccsds_primer.md) | Disposición de bits de la cabecera primaria CCSDS, asignación de APID, indicadores de secuencia, formato OBT |
+| [`pus_service_catalog.md`](pus_service_catalog.md) | Tabla de servicios PUS-C: servicios obligatorios, subservicios TC/TM, errores comunes |
+| [`ipc_decision_matrix.md`](ipc_decision_matrix.md) | Cuándo usar UDS vs FIFO vs POSIX MQ vs memoria compartida vs D-Bus |
+| [`rust_ffi_checklist.md`](rust_ffi_checklist.md) | Lista de verificación previa a la fusión para cualquier código que cruce la frontera Rust/C |
+| [`unsafe_audit_template.md`](unsafe_audit_template.md) | Plantillas de comentarios SAFETY para las 5 categorías de unsafe |
 
-## External References
+## Referencias Externas
 
-| Standard | Title | Access |
-|----------|-------|--------|
-| CCSDS 133.0-B-2 | Space Packet Protocol | Free: public.ccsds.org |
-| ECSS-E-ST-70-41C | PUS-C Packet Utilization Standard | Paid / ECSS membership |
-| ECSS-Q-ST-80C | Software product assurance | Paid |
+| Estándar | Título | Acceso |
+|----------|--------|--------|
+| CCSDS 133.0-B-2 | Space Packet Protocol | Gratuito: public.ccsds.org |
+| ECSS-E-ST-70-41C | PUS-C Packet Utilization Standard | De pago / membresía ECSS |
+| ECSS-Q-ST-80C | Garantía de calidad del producto software | De pago |
 | Linux man-pages | capabilities(7), prctl(2), mq_overview(7) | `man 7 capabilities` |
-| Rust Reference | Unsafe code | doc.rust-lang.org/reference |
-| The Rustonomicon | Dark arts of unsafe Rust | doc.rust-lang.org/nomicon |
+| Rust Reference | Código inseguro | doc.rust-lang.org/reference |
+| The Rustonomicon | Las artes oscuras del Rust inseguro | doc.rust-lang.org/nomicon |

@@ -1,14 +1,15 @@
-//! Example 01: Software Watchdog
+//! Ejemplo 01: Watchdog por Software
 //!
-//! A hardware watchdog resets the entire CPU if not kicked. That's great as a last
-//! resort, but within a single process we often want finer granularity: detect that
-//! *one* task has hung while others keep running, without killing everything.
+//! Un watchdog por hardware reinicia toda la CPU si no se le "patea". Eso es genial
+//! como último recurso, pero dentro de un único proceso a menudo queremos una
+//! granularidad más fina: detectar que *una* tarea se ha bloqueado mientras las demás
+//! siguen funcionando, sin matar todo el proceso.
 //!
-//! This is a software watchdog: each monitored task holds a WatchdogToken and calls
-//! `.kick()` to prove it's alive. A background monitor task checks all tokens and
-//! escalates when one expires.
+//! Este es un watchdog por software: cada tarea monitorizada tiene un WatchdogToken y
+//! llama a `.kick()` para demostrar que está viva. Una tarea monitora en segundo plano
+//! verifica todos los tokens y escala cuando uno expira.
 //!
-//! Run: cargo run --example 01_watchdog
+//! Ejecutar: cargo run --example 01_watchdog
 
 use std::{
     collections::HashMap,
@@ -23,23 +24,23 @@ use tracing::{error, info, warn};
 // WatchdogToken
 // ---------------------------------------------------------------------------
 
-/// A token given to each task that wants watchdog supervision.
+/// Token entregado a cada tarea que desea supervisión watchdog.
 ///
-/// The task calls `.kick()` periodically. If it doesn't, the monitor fires.
-/// Arc<Mutex<Instant>> lets both the task and the monitor share the timestamp
-/// without copying or unsafe code.
+/// La tarea llama a `.kick()` periódicamente. Si no lo hace, el monitor se activa.
+/// Arc<Mutex<Instant>> permite que tanto la tarea como el monitor compartan la marca
+/// de tiempo sin copiar ni usar código inseguro.
 #[derive(Clone)]
 pub struct WatchdogToken {
-    /// Human-readable name for logging.
+    /// Nombre legible para el registro de logs.
     pub name: String,
-    /// How long the token may go unkicked before it's considered expired.
+    /// Tiempo máximo que el token puede estar sin ser pateado antes de considerarse expirado.
     pub timeout: Duration,
-    /// Protected last-kick timestamp, shared with the monitor.
+    /// Marca de tiempo del último kick, compartida con el monitor.
     last_kick: Arc<Mutex<Instant>>,
 }
 
 impl WatchdogToken {
-    /// Create a new token. The deadline clock starts immediately.
+    /// Crear un nuevo token. El reloj de deadline comienza inmediatamente.
     pub fn new(name: impl Into<String>, timeout: Duration) -> Self {
         Self {
             name: name.into(),
@@ -48,23 +49,23 @@ impl WatchdogToken {
         }
     }
 
-    /// Called by the monitored task to prove it's still running.
+    /// Llamado por la tarea monitorizada para demostrar que sigue en ejecución.
     ///
-    /// In real hardware this would also kick /dev/watchdog or the IWDG register.
+    /// En hardware real esto también patearía /dev/watchdog o el registro IWDG.
     pub fn kick(&self) {
         let mut ts = self.last_kick.lock().unwrap();
         *ts = Instant::now();
-        // Trace-level: this fires every loop iteration, too noisy for info.
-        tracing::trace!(task = %self.name, "watchdog kicked");
+        // Nivel trace: se dispara en cada iteración del bucle, demasiado ruidoso para info.
+        tracing::trace!(task = %self.name, "watchdog pateado");
     }
 
-    /// Called by the monitor to check whether this token has expired.
+    /// Llamado por el monitor para comprobar si este token ha expirado.
     pub fn is_expired(&self) -> bool {
         let ts = self.last_kick.lock().unwrap();
         ts.elapsed() > self.timeout
     }
 
-    /// How long since the last kick — useful for health reporting.
+    /// Tiempo transcurrido desde el último kick — útil para informes de salud.
     pub fn time_since_kick(&self) -> Duration {
         self.last_kick.lock().unwrap().elapsed()
     }
@@ -74,10 +75,10 @@ impl WatchdogToken {
 // WatchdogMonitor
 // ---------------------------------------------------------------------------
 
-/// Owns all tokens, periodically checks them, calls the handler on expiry.
+/// Posee todos los tokens, los verifica periódicamente y llama al manejador al expirar.
 pub struct WatchdogMonitor {
     tokens: Vec<WatchdogToken>,
-    /// How often the monitor wakes up to sweep all tokens.
+    /// Con qué frecuencia se despierta el monitor para revisar todos los tokens.
     check_interval: Duration,
 }
 
@@ -89,23 +90,23 @@ impl WatchdogMonitor {
         }
     }
 
-    /// Register a new task. Returns the token the task must keep and kick.
+    /// Registrar una nueva tarea. Devuelve el token que la tarea debe conservar y patear.
     pub fn register(&mut self, name: impl Into<String>, timeout: Duration) -> WatchdogToken {
         let token = WatchdogToken::new(name, timeout);
         self.tokens.push(token.clone());
         token
     }
 
-    /// Run the monitor loop. Call this as a spawned task.
+    /// Ejecutar el bucle del monitor. Llamar esto como una tarea lanzada con spawn.
     ///
-    /// `on_expiry` is called once per expired token per sweep. In production you'd
-    /// wire this to the HealthTable and the supervisor escalation chain.
+    /// `on_expiry` se llama una vez por token expirado por barrido. En producción esto
+    /// se conectaría a la HealthTable y a la cadena de escalada del supervisor.
     pub async fn run<F>(self, mut on_expiry: F)
     where
         F: FnMut(&WatchdogToken),
     {
-        // Track which tokens have already been reported as expired so we don't
-        // spam the handler every check interval.
+        // Rastrear qué tokens ya han sido reportados como expirados para no
+        // inundar el manejador en cada intervalo de comprobación.
         let mut reported: HashMap<String, bool> = self
             .tokens
             .iter()
@@ -118,14 +119,14 @@ impl WatchdogMonitor {
             for token in &self.tokens {
                 if token.is_expired() {
                     if !reported[&token.name] {
-                        // First time we see this expiry: fire the callback.
+                        // Primera vez que vemos esta expiración: disparar el callback.
                         on_expiry(token);
                         *reported.get_mut(&token.name).unwrap() = true;
                     }
                 } else {
-                    // Token recovered (e.g., after a transient stall).
+                    // Token recuperado (p. ej., tras un bloqueo transitorio).
                     if reported[&token.name] {
-                        info!(task = %token.name, "watchdog: task recovered (kicked again)");
+                        info!(task = %token.name, "watchdog: tarea recuperada (pateó de nuevo)");
                     }
                     *reported.get_mut(&token.name).unwrap() = false;
                 }
@@ -135,46 +136,46 @@ impl WatchdogMonitor {
 }
 
 // ---------------------------------------------------------------------------
-// Demo tasks
+// Tareas de demostración
 // ---------------------------------------------------------------------------
 
-/// A well-behaved task that kicks its watchdog every 300 ms.
+/// Una tarea bien comportada que patea su watchdog cada 300 ms.
 async fn healthy_task(token: WatchdogToken) {
-    info!(task = %token.name, "starting (will kick every 300 ms)");
+    info!(task = %token.name, "iniciando (pateará cada 300 ms)");
     loop {
-        // Simulate work.
+        // Simular trabajo.
         sleep(Duration::from_millis(300)).await;
         token.kick();
-        info!(task = %token.name, "did some work, kicked watchdog");
+        info!(task = %token.name, "hizo algo de trabajo, pateó el watchdog");
     }
 }
 
-/// A task that works fine for a bit, then "hangs" (stops kicking).
+/// Una tarea que funciona bien un tiempo y luego se "bloquea" (deja de patear).
 async fn hanging_task(token: WatchdogToken) {
-    info!(task = %token.name, "starting (will hang after 1 second)");
+    info!(task = %token.name, "iniciando (se bloqueará después de 1 segundo)");
 
-    // Normal operation: kick a couple of times.
+    // Operación normal: patear un par de veces.
     for _ in 0..3 {
         sleep(Duration::from_millis(300)).await;
         token.kick();
-        info!(task = %token.name, "kicked watchdog (still healthy)");
+        info!(task = %token.name, "pateó el watchdog (sigue saludable)");
     }
 
-    // Now we enter a simulated deadlock / infinite blocking call.
-    // We never call token.kick() again, so the watchdog will fire.
-    warn!(task = %token.name, "entering simulated hang...");
-    sleep(Duration::from_secs(60)).await; // In real life: blocking syscall, deadlock, etc.
+    // Ahora entramos en un deadlock simulado / llamada bloqueante infinita.
+    // Nunca llamamos a token.kick() de nuevo, así que el watchdog se activará.
+    warn!(task = %token.name, "entrando en bloqueo simulado...");
+    sleep(Duration::from_secs(60)).await; // En la vida real: syscall bloqueante, deadlock, etc.
 }
 
-/// A task that kicks but too infrequently (simulates a slow / overloaded task).
+/// Una tarea que patea pero con demasiada poca frecuencia (simula una tarea lenta / sobrecargada).
 async fn slow_task(token: WatchdogToken) {
-    info!(task = %token.name, "starting (kicks every 1.5 s, timeout is 1 s)");
+    info!(task = %token.name, "iniciando (patea cada 1,5 s, el timeout es 1 s)");
     loop {
-        // This task is legitimately slow — it does a big computation.
-        // But it's so slow that it misses its watchdog window.
+        // Esta tarea es legítimamente lenta — realiza un gran cómputo.
+        // Pero es tan lenta que pierde su ventana de watchdog.
         sleep(Duration::from_millis(1500)).await;
-        token.kick(); // Too late — the monitor will have fired by now.
-        info!(task = %token.name, "finished slow work, kicked watchdog");
+        token.kick(); // Demasiado tarde — el monitor ya habrá disparado.
+        info!(task = %token.name, "terminó el trabajo lento, pateó el watchdog");
     }
 }
 
@@ -188,40 +189,40 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    info!("=== Day 5: Software Watchdog Demo ===");
+    info!("=== Día 5: Demo de Watchdog por Software ===");
 
-    // Build the monitor and register three tasks.
-    // Each task gets an individual timeout appropriate for its expected cadence.
+    // Construir el monitor y registrar tres tareas.
+    // Cada tarea recibe un timeout individual apropiado para su cadencia esperada.
     let mut monitor = WatchdogMonitor::new(Duration::from_millis(200));
 
     let healthy_token = monitor.register("healthy_task", Duration::from_millis(1000));
     let hanging_token = monitor.register("hanging_task", Duration::from_millis(1000));
-    // The slow task has a tight timeout so the watchdog fires even though the task
-    // *does* eventually kick — it just kicks too rarely.
+    // La tarea lenta tiene un timeout ajustado para que el watchdog se active aunque la tarea
+    // *sí* patee eventualmente — simplemente lo hace con demasiada poca frecuencia.
     let slow_token = monitor.register("slow_task", Duration::from_millis(1000));
 
-    // Spawn the monitored tasks.
+    // Lanzar las tareas monitorizadas.
     tokio::spawn(healthy_task(healthy_token));
     tokio::spawn(hanging_task(hanging_token));
     tokio::spawn(slow_task(slow_token));
 
-    // Spawn the watchdog monitor. The closure is our FDIR escalation entry point.
-    // In a real system this would call into the health table and supervisor.
+    // Lanzar el monitor watchdog. El closure es nuestro punto de entrada de escalada FDIR.
+    // En un sistema real esto llamaría a la tabla de salud y al supervisor.
     tokio::spawn(monitor.run(|token| {
         error!(
             task = %token.name,
-            stalled_for_ms = %token.time_since_kick().as_millis(),
-            "WATCHDOG EXPIRED — task is not responding!"
+            parado_por_ms = %token.time_since_kick().as_millis(),
+            "WATCHDOG EXPIRADO — ¡la tarea no responde!"
         );
-        // Next step in a real system:
-        //   1. Mark component Failed in HealthTable
-        //   2. Notify supervisor to restart the task
-        //   3. If it happens too often, escalate to safe mode
+        // Siguiente paso en un sistema real:
+        //   1. Marcar el componente como Failed en la HealthTable
+        //   2. Notificar al supervisor para reiniciar la tarea
+        //   3. Si ocurre con demasiada frecuencia, escalar a modo seguro
     }));
 
-    // Let the demo run for 6 seconds, then stop.
-    info!("Running for 6 seconds — watch for watchdog expiry events...");
+    // Dejar correr la demo durante 6 segundos, luego detener.
+    info!("Ejecutando durante 6 segundos — observar los eventos de expiración del watchdog...");
     sleep(Duration::from_secs(6)).await;
 
-    info!("Demo complete. In a real system we'd signal shutdown here.");
+    info!("Demo completada. En un sistema real se señalizaría el apagado aquí.");
 }
