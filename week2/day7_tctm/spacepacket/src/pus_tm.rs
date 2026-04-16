@@ -1,4 +1,4 @@
-//! PUS-C Telemetry packet (ECSS-E-ST-70-41C).
+//! Paquete de Telemetría PUS-C (ECSS-E-ST-70-41C).
 
 use crate::{
     crc,
@@ -6,21 +6,21 @@ use crate::{
     primary_header::{CcsdsPrimaryHeader, PacketType, SeqFlags},
 };
 
-/// A PUS-C Telemetry packet.
+/// Un paquete de Telemetría PUS-C.
 ///
-/// ## Wire format
+/// ## Formato en cable
 /// ```text
 /// ┌─────────────────┬─────────────────────────────────────────┬──────────┬──────┐
-/// │ Primary Header  │ PUS Secondary Header (10 B)             │ App Data │ CRC  │
-/// │ (6 B)           │                                         │ (var.)   │ (2B) │
+/// │ Cabecera Primaria│ Cabecera Secundaria PUS (10 B)          │ Datos    │ CRC  │
+/// │ (6 B)           │                                         │ Aplic.   │ (2B) │
 /// └─────────────────┴─────────────────────────────────────────┴──────────┴──────┘
 ///
-/// PUS-C TM Secondary Header (10 bytes):
-///   Byte 0: PUS version (4b) = 0b0010, spare (4b) = 0
-///   Byte 1: Service type
-///   Byte 2: Subservice type
-///   Bytes 3–4: Destination ID (big-endian u16)
-///   Bytes 5–10: On-Board Time (OBT) — 4B coarse (seconds) + 2B fine (sub-seconds)
+/// Cabecera Secundaria PUS-C TM (10 bytes):
+///   Byte 0: versión PUS (4b) = 0b0010, spare (4b) = 0
+///   Byte 1: tipo de servicio
+///   Byte 2: tipo de subservicio
+///   Bytes 3–4: ID de destino (u16 big-endian)
+///   Bytes 5–10: Tiempo a bordo (OBT) — 4B grueso (segundos) + 2B fino (sub-segundos)
 /// ```
 #[derive(Debug, Clone)]
 pub struct PusTelemetry {
@@ -28,13 +28,13 @@ pub struct PusTelemetry {
     service: u8,
     subservice: u8,
     dest_id: u16,
-    /// On-Board Time: milliseconds since spacecraft epoch.
+    /// Tiempo a bordo: milisegundos desde la época de la nave espacial.
     obt_ms: u64,
     app_data: Vec<u8>,
 }
 
 impl PusTelemetry {
-    /// Constructs a new PUS-C telemetry packet.
+    /// Construye un nuevo paquete de telemetría PUS-C.
     pub fn new(
         apid: u16,
         seq_count: u16,
@@ -44,7 +44,7 @@ impl PusTelemetry {
         obt_ms: u64,
         app_data: Vec<u8>,
     ) -> Result<Self, PacketError> {
-        // PUS-C TM secondary header = 10 B, + app_data + CRC(2)
+        // Cabecera secundaria PUS-C TM = 10 B, + app_data + CRC(2)
         let data_field_len = (10 + app_data.len() + 2) as u16;
         let primary = CcsdsPrimaryHeader::new(
             PacketType::Tm,
@@ -56,16 +56,16 @@ impl PusTelemetry {
         Ok(Self { primary, service, subservice, dest_id, obt_ms, app_data })
     }
 
-    /// Serialises the TM to bytes, appending CRC-CCITT.
+    /// Serializa el TM a bytes, añadiendo el CRC-CCITT.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(6 + 10 + self.app_data.len() + 2);
         buf.extend_from_slice(&self.primary.to_bytes());
-        buf.push(0x20); // PUS-C version
+        buf.push(0x20); // versión PUS-C
         buf.push(self.service);
         buf.push(self.subservice);
         buf.push((self.dest_id >> 8) as u8);
         buf.push(self.dest_id as u8);
-        // OBT: 4B coarse (seconds) + 2B fine (milliseconds within that second)
+        // OBT: 4B grueso (segundos) + 2B fino (milisegundos dentro de ese segundo)
         let coarse = (self.obt_ms / 1000) as u32;
         let fine = ((self.obt_ms % 1000) * 65535 / 999) as u16;
         buf.extend_from_slice(&coarse.to_be_bytes());
@@ -75,7 +75,7 @@ impl PusTelemetry {
         buf
     }
 
-    /// Parses a PUS-C TM from bytes, verifying the CRC.
+    /// Parsea un TM PUS-C desde bytes, verificando el CRC.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, PacketError> {
         if bytes.len() < 6 + 10 + 2 {
             return Err(PacketError::BufferTooShort { need: 18, got: bytes.len() });

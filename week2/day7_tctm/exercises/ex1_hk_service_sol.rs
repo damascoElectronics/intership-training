@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution: PUS Service 3 Housekeeping Report Generator
+//! Ejercicio 1 — Solución: Generador de Informes de Housekeeping PUS Servicio 3
 
 #![allow(dead_code)]
 
@@ -34,7 +34,7 @@ impl HkService {
     }
 
     pub fn register_parameter(&mut self, id: HkParameterId, value: HkParameterValue) {
-        // Update existing entry if found, otherwise append
+        // Actualizar entrada existente si se encuentra; si no, añadir al final
         if let Some(entry) = self.parameters.iter_mut().find(|(i, _)| *i == id) {
             entry.1 = value;
         } else {
@@ -52,7 +52,7 @@ impl HkService {
     }
 
     pub fn build_report(&mut self) -> Result<PusTelemetry, spacepacket::PacketError> {
-        // Format: [count: u8] + [id: u8, value: 2B] × count
+        // Formato: [count: u8] + [id: u8, value: 2B] × count
         let mut app_data = Vec::with_capacity(1 + self.parameters.len() * 3);
         app_data.push(self.parameters.len() as u8);
         for (id, value) in &self.parameters {
@@ -119,5 +119,5 @@ fn main() {
     svc.register_parameter(HkParameterId::TemperatureMc, HkParameterValue::Int16(23_500));
     svc.register_parameter(HkParameterId::BusVoltageMv, HkParameterValue::Uint16(28_100));
     let tm = svc.build_report().unwrap();
-    println!("Built TM(3,25): {} bytes, seq={}", tm.to_bytes().len(), tm.seq_count());
+    println!("TM(3,25) construido: {} bytes, seq={}", tm.to_bytes().len(), tm.seq_count());
 }

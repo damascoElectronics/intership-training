@@ -1,4 +1,4 @@
-//! Exercise 2 — Solution
+//! Ejercicio 2 — Solución
 
 #![allow(dead_code)]
 
@@ -25,18 +25,18 @@ pub async fn run_monitor(monitor: ThermalMonitor, tx: mpsc::Sender<ThermalAlert>
         ticker.tick().await;
         let temp_mc: i64 = match tokio::fs::read_to_string(&monitor.sysfs_path).await {
             Ok(s) => s.trim().parse().unwrap_or(0),
-            Err(_) => continue, // file not readable, skip
+            Err(_) => continue, // archivo no legible, omitir
         };
         if temp_mc > monitor.warn_threshold_mc {
             let alert = ThermalAlert {
                 temp_mc,
                 threshold_mc: monitor.warn_threshold_mc,
-                message: format!("Temperature {:.1}°C exceeds threshold {:.1}°C",
+                message: format!("Temperatura {:.1}°C supera el umbral de {:.1}°C",
                                  temp_mc as f64 / 1000.0,
                                  monitor.warn_threshold_mc as f64 / 1000.0),
             };
             if tx.send(alert).await.is_err() {
-                break; // receiver dropped → stop monitoring
+                break; // receptor descartado → detener monitoreo
             }
         }
     }
@@ -59,7 +59,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(4);
         tokio::spawn(run_monitor(monitor, tx));
         let alert = timeout(Duration::from_millis(200), rx.recv())
-            .await.expect("no timeout").expect("channel open");
+            .await.expect("sin timeout").expect("canal abierto");
         assert_eq!(alert.temp_mc, 80_000);
     }
 
@@ -81,5 +81,5 @@ mod tests {
 
 #[tokio::main]
 async fn main() {
-    println!("Run tests with: cargo test --example ex2_sysfs_poll_sol");
+    println!("Ejecutar tests con: cargo test --example ex2_sysfs_poll_sol");
 }

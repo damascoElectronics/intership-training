@@ -1,59 +1,59 @@
-/// Example 04 — String handling across the FFI boundary
+/// Ejemplo 04 — Manejo de cadenas a través del límite FFI
 ///
-/// Strings are where many FFI bugs live. The fundamental mismatch:
+/// Las cadenas son donde viven muchos errores de FFI. La incompatibilidad fundamental:
 ///
-///   Rust strings:
-///     - `String`: heap-allocated, UTF-8 encoded, length stored explicitly,
-///       NOT null-terminated.
-///     - `&str`: a borrowed view of UTF-8 bytes, NOT null-terminated.
+///   Cadenas de Rust:
+///     - `String`: asignada en el montón, codificada en UTF-8, longitud almacenada explícitamente,
+///       NO terminada en nulo.
+///     - `&str`: vista prestada de bytes UTF-8, NO terminada en nulo.
 ///
-///   C strings:
-///     - `char *`: a pointer to bytes, null-terminated (byte value 0x00 marks the end).
-///     - May or may not be UTF-8 (often ASCII in practice).
-///     - May contain arbitrary bytes (not validated UTF-8).
+///   Cadenas de C:
+///     - `char *`: un puntero a bytes, terminado en nulo (el valor de byte 0x00 marca el final).
+///     - Puede o no ser UTF-8 (en la práctica suele ser ASCII).
+///     - Puede contener bytes arbitrarios (UTF-8 no validado).
 ///
-/// The key types in Rust's std::ffi:
-///   - `CString`:  Rust-owned, heap-allocated, null-terminated string.
-///                 Created from Rust data, passed to C.
-///   - `CStr`:     Borrowed view of a null-terminated byte sequence.
-///                 Used to read strings that C owns.
-///   - `OsString` / `OsStr`: Platform-native string type (UTF-8 on Unix,
-///                 UTF-16 on Windows). Useful for file paths.
+/// Los tipos clave en std::ffi de Rust:
+///   - `CString`:  Cadena de propiedad de Rust, asignada en el montón, terminada en nulo.
+///                 Creada desde datos de Rust, pasada a C.
+///   - `CStr`:     Vista prestada de una secuencia de bytes terminada en nulo.
+///                 Usada para leer cadenas que pertenecen a C.
+///   - `OsString` / `OsStr`: Tipo de cadena nativo de la plataforma (UTF-8 en Unix,
+///                 UTF-16 en Windows). Útil para rutas de archivo.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
 // ──────────────────────────────────────────────────────────────────────────────
-// We declare a few hypothetical C functions that deal with strings.
-// These are stand-ins for real device driver APIs you'd find in the wild.
+// Declaramos algunas funciones C hipotéticas que trabajan con cadenas.
+// Son sustitutos de las APIs reales de controladores de dispositivos que encontrarías en la práctica.
 // ──────────────────────────────────────────────────────────────────────────────
 extern "C" {
-    /// Opens a device by path, returns a file descriptor or -1.
-    /// C signature: int open_device(const char *path);
+    /// Abre un dispositivo por ruta, devuelve un descriptor de archivo o -1.
+    /// Firma en C: int open_device(const char *path);
     fn open_device(path: *const c_char) -> i32;
 
-    /// Writes a log message via the C logging subsystem.
-    /// C signature: void c_log_message(const char *msg);
+    /// Escribe un mensaje de registro a través del subsistema de logging de C.
+    /// Firma en C: void c_log_message(const char *msg);
     fn c_log_message(msg: *const c_char);
 
-    /// Returns the device's name as a statically-allocated C string.
-    /// The returned pointer is valid for the lifetime of the program.
-    /// C signature: const char *get_device_name(int fd);
+    /// Devuelve el nombre del dispositivo como una cadena C asignada estáticamente.
+    /// El puntero devuelto es válido durante toda la vida del programa.
+    /// Firma en C: const char *get_device_name(int fd);
     fn get_device_name(fd: i32) -> *const c_char;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Stub implementations (would be real C in a real project).
-// We use #[no_mangle] here just to satisfy the linker for this self-contained
-// example binary. In a real project these would be in a C file.
+// Implementaciones de prueba (serían C real en un proyecto real).
+// Usamos #[no_mangle] aquí solo para satisfacer al enlazador en este ejemplo
+// binario autocontenido. En un proyecto real estarían en un archivo C.
 // ──────────────────────────────────────────────────────────────────────────────
 #[no_mangle]
 pub extern "C" fn open_device(path: *const c_char) -> i32 {
     if path.is_null() {
         return -1;
     }
-    // Stub: pretend every path opens successfully with fd=42.
-    // (In reality: call open(2) syscall here.)
+    // Stub: fingir que toda ruta se abre exitosamente con fd=42.
+    // (En realidad: llamar aquí a la syscall open(2).)
     42
 }
 
@@ -62,119 +62,119 @@ pub extern "C" fn c_log_message(msg: *const c_char) {
     if msg.is_null() {
         return;
     }
-    // Safety: we trust C code passed a valid, null-terminated string.
+    // Seguridad: confiamos en que el código C pasó una cadena válida terminada en nulo.
     let s = unsafe { CStr::from_ptr(msg) };
     println!("[C-log] {}", s.to_string_lossy());
 }
 
 #[no_mangle]
 pub extern "C" fn get_device_name(_fd: i32) -> *const c_char {
-    // Return a static C string literal.
-    // b"UART-A\0".as_ptr() is valid for 'static, so this is safe.
+    // Devolver un literal de cadena C estático.
+    // b"UART-A\0".as_ptr() es válido para 'static, por lo que esto es seguro.
     b"UART-A\0".as_ptr() as *const c_char
 }
 
 fn main() {
-    println!("=== Example 04: Strings Across the FFI Boundary ===\n");
+    println!("=== Ejemplo 04: Cadenas a través del límite FFI ===\n");
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATTERN 1: Passing a Rust string to C (Rust → C)
+    // PATRÓN 1: Pasar una cadena de Rust a C (Rust → C)
     //
-    // CString::new() allocates a null-terminated copy of your string on the
-    // heap. It fails if the string contains any interior null bytes.
+    // CString::new() asigna una copia terminada en nulo de tu cadena en el
+    // montón. Falla si la cadena contiene bytes nulos interiores.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- Pattern 1: Rust string → C ---");
+    println!("--- Patrón 1: cadena de Rust → C ---");
 
     let path = "/dev/ttyS0";
 
-    // Step 1: Convert to CString. This allocates and appends a null byte.
-    let c_path = CString::new(path).expect("path contains no null bytes");
+    // Paso 1: Convertir a CString. Esto asigna y agrega un byte nulo.
+    let c_path = CString::new(path).expect("la ruta no contiene bytes nulos");
 
-    // Step 2: Get a raw pointer. The pointer borrows from c_path.
-    // THIS IS THE CRITICAL POINT: c_path must stay alive while C uses the ptr!
+    // Paso 2: Obtener un puntero crudo. El puntero toma prestado de c_path.
+    // ESTE ES EL PUNTO CRÍTICO: ¡c_path debe mantenerse vivo mientras C use el ptr!
     let ptr = c_path.as_ptr();
 
-    // Step 3: Call C. Safe because c_path is still alive on this line.
-    // Safety: ptr is non-null, points to a valid null-terminated string,
-    // and the string lives for the duration of open_device's call.
+    // Paso 3: Llamar a C. Seguro porque c_path sigue vivo en esta línea.
+    // Seguridad: ptr no es nulo, apunta a una cadena válida terminada en nulo,
+    // y la cadena vive durante toda la llamada de open_device.
     let fd = unsafe { open_device(ptr) };
-    println!("  open_device(\"{}\") returned fd={}", path, fd);
-    // c_path is dropped here — AFTER the C call. This is correct.
+    println!("  open_device(\"{}\") devolvió fd={}", path, fd);
+    // c_path se descarta aquí — DESPUÉS de la llamada a C. Esto es correcto.
 
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // THE MOST COMMON FFI STRING BUG — temporary lifetime
+    // EL ERROR DE CADENA FFI MÁS COMÚN — vida útil de temporales
     //
-    // WRONG: CString::new(...) creates a temporary. .as_ptr() returns a pointer
-    //        into that temporary. The temporary is dropped at the semicolon (;),
-    //        leaving `ptr` pointing to freed memory — a use-after-free bug.
+    // INCORRECTO: CString::new(...) crea un temporal. .as_ptr() devuelve un puntero
+    //        a ese temporal. El temporal se descarta en el punto y coma (;),
+    //        dejando `ptr` apuntando a memoria liberada — un error use-after-free.
     //
-    // The Rust compiler does NOT always catch this! It used to (pre-2021 edition
-    // temporaries), but the behaviour is tricky and has changed across editions.
-    // The safe approach is: ALWAYS bind the CString to a named `let` binding.
+    // ¡El compilador de Rust NO siempre detecta esto! Antes lo hacía (ediciones pre-2021
+    // con temporales), pero el comportamiento es complicado y ha cambiado entre ediciones.
+    // El enfoque seguro es: SIEMPRE vincular el CString a un binding `let` con nombre.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- WRONG: dangling pointer from temporary CString ---");
+    println!("--- INCORRECTO: puntero colgante desde un CString temporal ---");
     println!();
-    println!("  // WRONG — do NOT write this:");
+    println!("  // INCORRECTO — NO escribas esto:");
     println!("  // let ptr = CString::new(\"/dev/ttyS0\").unwrap().as_ptr();");
-    println!("  //                                               ^ CString dropped here!");
-    println!("  // open_device(ptr);  // ptr is now a dangling pointer → UB");
+    println!("  //                                               ^ ¡CString descartado aquí!");
+    println!("  // open_device(ptr);  // ptr es ahora un puntero colgante → UB");
     println!();
-    println!("  // CORRECT — bind the CString to a name:");
+    println!("  // CORRECTO — vincular el CString a un nombre:");
     println!("  // let cstr = CString::new(\"/dev/ttyS0\").unwrap();");
-    println!("  // open_device(cstr.as_ptr());  // cstr is alive here");
+    println!("  // open_device(cstr.as_ptr());  // cstr está vivo aquí");
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATTERN 2: Receiving a C string from C (C → Rust)
+    // PATRÓN 2: Recibir una cadena C de C (C → Rust)
     //
-    // CStr::from_ptr() borrows from the C string. It does NOT copy or allocate.
-    // The resulting &CStr is only valid while C's string is alive.
+    // CStr::from_ptr() toma prestado de la cadena C. NO copia ni asigna.
+    // El &CStr resultante solo es válido mientras la cadena de C esté viva.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- Pattern 2: C string → Rust ---");
+    println!("--- Patrón 2: cadena C → Rust ---");
 
-    // Safety: get_device_name returns a 'static string literal from C.
-    // We know it's non-null and null-terminated (by reading the C implementation).
+    // Seguridad: get_device_name devuelve un literal de cadena 'static de C.
+    // Sabemos que no es nulo y está terminado en nulo (al leer la implementación en C).
     let raw_name: *const c_char = unsafe { get_device_name(fd) };
 
     if raw_name.is_null() {
-        println!("  get_device_name returned NULL — no name available");
+        println!("  get_device_name devolvió NULL — no hay nombre disponible");
     } else {
-        // Safety: raw_name is non-null, null-terminated, valid for 'static.
+        // Seguridad: raw_name no es nulo, está terminado en nulo, válido para 'static.
         let name_cstr: &CStr = unsafe { CStr::from_ptr(raw_name) };
 
-        // to_str() converts to &str if the bytes are valid UTF-8.
-        // to_string_lossy() replaces invalid UTF-8 bytes with U+FFFD — always succeeds.
+        // to_str() convierte a &str si los bytes son UTF-8 válido.
+        // to_string_lossy() reemplaza bytes UTF-8 inválidos con U+FFFD — siempre tiene éxito.
         match name_cstr.to_str() {
-            Ok(s) => println!("  Device name (valid UTF-8): \"{}\"", s),
+            Ok(s) => println!("  Nombre del dispositivo (UTF-8 válido): \"{}\"", s),
             Err(_) => {
                 println!(
-                    "  Device name (non-UTF-8, lossy): \"{}\"",
+                    "  Nombre del dispositivo (no UTF-8, con pérdida): \"{}\"",
                     name_cstr.to_string_lossy()
                 )
             }
         }
 
-        // If you need an owned String (e.g., to store in a struct), clone it:
+        // Si necesitas un String propio (ej., para almacenar en un struct), clónalo:
         let owned: String = name_cstr.to_string_lossy().into_owned();
-        println!("  Owned Rust String: \"{}\"", owned);
+        println!("  String de Rust propio: \"{}\"", owned);
     }
 
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATTERN 3: Interior null bytes — the hidden landmine
+    // PATRÓN 3: Bytes nulos interiores — la mina escondida
     //
-    // C strings use null (0x00) as the terminator. If your string DATA contains
-    // a null byte, C will think the string ended there, silently truncating it.
-    // CString::new() CHECKS for interior nulls and returns an error — this saves
-    // you from silent data corruption.
+    // Las cadenas de C usan nulo (0x00) como terminador. Si tus DATOS de cadena contienen
+    // un byte nulo, C pensará que la cadena terminó ahí, truncándola silenciosamente.
+    // CString::new() VERIFICA los nulos interiores y devuelve un error — esto te salva
+    // de la corrupción silenciosa de datos.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- Pattern 3: Interior null bytes ---");
+    println!("--- Patrón 3: Bytes nulos interiores ---");
 
     let safe_string = "hello, world";
-    let tricky_string = "hello\x00world"; // contains a null in the middle
+    let tricky_string = "hello\x00world"; // contiene un nulo en el medio
 
     match CString::new(safe_string) {
         Ok(cs) => println!("  CString::new({:?}) → OK (len={})", safe_string, cs.as_bytes().len()),
@@ -182,9 +182,9 @@ fn main() {
     }
 
     match CString::new(tricky_string) {
-        Ok(_) => println!("  CString::new({:?}) → OK (unexpected!)", tricky_string),
+        Ok(_) => println!("  CString::new({:?}) → OK (¡inesperado!)", tricky_string),
         Err(e) => println!(
-            "  CString::new({:?}) → Err({}) ← interior null detected!",
+            "  CString::new({:?}) → Err({}) ← ¡nulo interior detectado!",
             tricky_string, e
         ),
     }
@@ -192,38 +192,38 @@ fn main() {
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // PATTERN 4: Sending a log message (practical example)
+    // PATRÓN 4: Enviar un mensaje de registro (ejemplo práctico)
     //
-    // Many embedded C frameworks expose a logging function that takes a C string.
-    // Here's the idiomatic way to call it.
+    // Muchos frameworks C embebidos exponen una función de logging que recibe una cadena C.
+    // Esta es la forma idiomática de llamarla.
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- Pattern 4: Calling C log function ---");
+    println!("--- Patrón 4: Llamar a la función de log de C ---");
 
     let apid = 0x100u16;
     let seq = 42u16;
 
-    // format! creates a Rust String. Then we convert it for C.
-    let msg = format!("CCSDS packet received: apid=0x{:03X} seq={}", apid, seq);
-    let c_msg = CString::new(msg).expect("log message contains no null bytes");
+    // format! crea un String de Rust. Luego lo convertimos para C.
+    let msg = format!("Paquete CCSDS recibido: apid=0x{:03X} seq={}", apid, seq);
+    let c_msg = CString::new(msg).expect("el mensaje de log no contiene bytes nulos");
 
-    // Safety: c_msg is alive for the duration of the call.
+    // Seguridad: c_msg está vivo durante toda la llamada.
     unsafe { c_log_message(c_msg.as_ptr()); }
 
     println!();
 
     // ──────────────────────────────────────────────────────────────────────────
-    // SUMMARY TABLE
+    // TABLA RESUMEN
     // ──────────────────────────────────────────────────────────────────────────
-    println!("--- Summary ---");
+    println!("--- Resumen ---");
     println!();
-    println!("  Direction          | Rust type   | Key point");
-    println!("  -------------------|-------------|------------------------------------");
-    println!("  Rust → C (owned)   | CString     | Allocates + null-terminates");
-    println!("  Rust → C (borrow)  | &CStr       | Zero-copy view; check lifetime!");
-    println!("  C → Rust (borrow)  | &CStr       | from_ptr(); do NOT outlive C ptr");
-    println!("  C → Rust (owned)   | String      | CStr::to_string_lossy().into_owned()");
-    println!("  File paths         | OsStr/Path  | Platform-native encoding");
+    println!("  Dirección           | Tipo Rust   | Punto clave");
+    println!("  --------------------|-------------|------------------------------------");
+    println!("  Rust → C (propio)   | CString     | Asigna + termina en nulo");
+    println!("  Rust → C (prestado) | &CStr       | Vista sin copia; ¡verificar vida útil!");
+    println!("  C → Rust (prestado) | &CStr       | from_ptr(); NO sobrevivir al ptr de C");
+    println!("  C → Rust (propio)   | String      | CStr::to_string_lossy().into_owned()");
+    println!("  Rutas de archivo    | OsStr/Path  | Codificación nativa de la plataforma");
     println!();
-    println!("  Golden rule: ALWAYS bind CString to a named variable.");
-    println!("  Never call .as_ptr() on a temporary.");
+    println!("  Regla de oro: SIEMPRE vincular CString a una variable con nombre.");
+    println!("  Nunca llamar .as_ptr() sobre un temporal.");
 }

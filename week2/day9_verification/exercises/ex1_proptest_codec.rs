@@ -1,16 +1,16 @@
-//! Exercise 1 — Find the bug with proptest
+//! Ejercicio 1 — Encontrar el error con proptest
 //!
-//! The COBS implementation below has a subtle off-by-one bug.
-//! Write proptest properties that find it.
+//! La implementación COBS a continuación tiene un error sutil de desfase en uno.
+//! Escribe propiedades proptest que lo encuentren.
 //!
-//! Hint: the bug only manifests for input lengths that are exact multiples of 254.
+//! Pista: el error solo se manifiesta para longitudes de entrada que son múltiplos exactos de 254.
 //!
-//! Run: cargo test --example ex1_proptest_codec
+//! Ejecutar: cargo test --example ex1_proptest_codec
 
 use proptest::prelude::*;
 
-// ── Buggy COBS implementation ──────────────────────────────────────────────────
-// DO NOT FIX this implementation — the goal is to FIND the bug with proptest.
+// ── Implementación COBS con error ──────────────────────────────────────────────────
+// NO CORRIJAS esta implementación — el objetivo es ENCONTRAR el error con proptest.
 
 pub fn cobs_encode_buggy(data: &[u8]) -> Vec<u8> {
     let mut output = Vec::with_capacity(data.len() + 2);
@@ -30,8 +30,8 @@ pub fn cobs_encode_buggy(data: &[u8]) -> Vec<u8> {
             if code == 0xFF {
                 output[code_pos] = code;
                 code_pos = output.len();
-                // BUG: should push 0x01 here (next code placeholder) but doesn't
-                // This corrupts output for inputs where a 254-byte run ends exactly
+                // ERROR: aquí debería hacerse push de 0x01 (marcador del siguiente código) pero no se hace
+                // Esto corrompe la salida para entradas donde una secuencia de 254 bytes termina exactamente
                 code = 1;
             }
         }
@@ -59,29 +59,29 @@ pub fn cobs_decode_buggy(encoded: &[u8]) -> Option<Vec<u8>> {
     Some(output)
 }
 
-// ── Your tests ────────────────────────────────────────────────────────────────
+// ── Tus pruebas ────────────────────────────────────────────────────────────────
 
 proptest! {
-    /// TODO: Write a property that finds the bug.
+    /// TODO: Escribe una propiedad que encuentre el error.
     ///
-    /// The round-trip property will fail for some input.
-    /// When proptest shrinks the failing case, you should see
-    /// what kind of input triggers the bug.
+    /// La propiedad de viaje de ida y vuelta fallará para alguna entrada.
+    /// Cuando proptest reduzca el caso que falla, deberías ver
+    /// qué tipo de entrada provoca el error.
     #[test]
     fn roundtrip_should_find_bug(data: Vec<u8>) {
-        todo!("write: encode, decode, assert equal — proptest will find the bug")
+        todo!("escribir: codificar, decodificar, afirmar igualdad — proptest encontrará el error")
     }
 
-    /// TODO: Write a property checking no 0x00 in output.
-    /// Does the bug affect this property too?
+    /// TODO: Escribe una propiedad que verifique que no hay 0x00 en la salida.
+    /// ¿El error también afecta a esta propiedad?
     #[test]
     fn no_zeros_in_output(data: Vec<u8>) {
-        todo!("encode and assert no 0x00 bytes in result")
+        todo!("codificar y afirmar que no hay bytes 0x00 en el resultado")
     }
 }
 
 fn main() {
-    println!("Run: cargo test --example ex1_proptest_codec");
-    println!("When proptest finds the failing case, it will shrink it.");
-    println!("Expected: fails for inputs with a run of 254+ non-zero bytes.");
+    println!("Ejecutar: cargo test --example ex1_proptest_codec");
+    println!("Cuando proptest encuentre el caso que falla, lo reducirá.");
+    println!("Esperado: falla para entradas con una secuencia de 254+ bytes no nulos.");
 }

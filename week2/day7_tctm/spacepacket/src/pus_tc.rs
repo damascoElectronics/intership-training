@@ -1,4 +1,4 @@
-//! PUS-C Telecommand packet (ECSS-E-ST-70-41C).
+//! Paquete de Telecomando PUS-C (ECSS-E-ST-70-41C).
 
 use crate::{
     crc,
@@ -6,20 +6,20 @@ use crate::{
     primary_header::{CcsdsPrimaryHeader, PacketType, SeqFlags},
 };
 
-/// A PUS-C Telecommand packet.
+/// Un paquete de Telecomando PUS-C.
 ///
-/// ## Wire format
+/// ## Formato en cable
 /// ```text
 /// ┌─────────────────┬────────────────────────────────┬───────────────┬────────┐
-/// │ Primary Header  │ PUS Secondary Header           │ App Data      │ CRC    │
+/// │ Cabecera Primaria│ Cabecera Secundaria PUS        │ Datos Aplic.  │ CRC    │
 /// │ (6 B)           │ (5 B)                          │ (variable)    │ (2 B)  │
 /// └─────────────────┴────────────────────────────────┴───────────────┴────────┘
 ///
-/// PUS-C TC Secondary Header (5 bytes):
-///   Byte 0: PUS version (bits 7-4) = 0b0010, spare (bits 3-0) = 0
-///   Byte 1: Service type
-///   Byte 2: Subservice type
-///   Bytes 3–4: Source ID (big-endian u16)
+/// Cabecera Secundaria PUS-C TC (5 bytes):
+///   Byte 0: versión PUS (bits 7-4) = 0b0010, spare (bits 3-0) = 0
+///   Byte 1: tipo de servicio
+///   Byte 2: tipo de subservicio
+///   Bytes 3–4: ID de origen (u16 big-endian)
 /// ```
 #[derive(Debug, Clone)]
 pub struct PusTelecommand {
@@ -31,15 +31,15 @@ pub struct PusTelecommand {
 }
 
 impl PusTelecommand {
-    /// Constructs a new PUS-C telecommand.
+    /// Construye un nuevo telecomando PUS-C.
     ///
     /// # Arguments
-    /// - `apid` — Application Process Identifier (0x000–0x7FE)
-    /// - `seq_count` — 14-bit sequence count (0–0x3FFF)
-    /// - `service` — PUS service type (e.g., `17` for test/ping)
-    /// - `subservice` — PUS subservice type (e.g., `1` for are-you-alive ping)
-    /// - `source_id` — identifies the ground station or application sending this TC
-    /// - `app_data` — application-specific payload bytes
+    /// - `apid` — Identificador de Proceso de Aplicación (0x000–0x7FE)
+    /// - `seq_count` — contador de secuencia de 14 bits (0–0x3FFF)
+    /// - `service` — tipo de servicio PUS (p. ej., `17` para test/ping)
+    /// - `subservice` — tipo de subservicio PUS (p. ej., `1` para ping are-you-alive)
+    /// - `source_id` — identifica la estación terrestre o aplicación que envía este TC
+    /// - `app_data` — bytes de payload específicos de la aplicación
     pub fn new(
         apid: u16,
         seq_count: u16,
@@ -48,7 +48,7 @@ impl PusTelecommand {
         source_id: u16,
         app_data: Vec<u8>,
     ) -> Result<Self, PacketError> {
-        // PUS secondary header is always 5 bytes; app_data + CRC(2) follow
+        // La cabecera secundaria PUS siempre tiene 5 bytes; app_data + CRC(2) siguen a continuación
         let data_field_len = (5 + app_data.len() + 2) as u16;
         let primary = CcsdsPrimaryHeader::new(
             PacketType::Tc,
@@ -60,11 +60,11 @@ impl PusTelecommand {
         Ok(Self { primary, service, subservice, source_id, app_data })
     }
 
-    /// Serialises the TC to bytes, appending the CRC-CCITT at the end.
+    /// Serializa el TC a bytes, añadiendo el CRC-CCITT al final.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(6 + 5 + self.app_data.len() + 2);
         buf.extend_from_slice(&self.primary.to_bytes());
-        buf.push(0x20); // PUS-C version = 0b0010, spare = 0
+        buf.push(0x20); // versión PUS-C = 0b0010, spare = 0
         buf.push(self.service);
         buf.push(self.subservice);
         buf.push((self.source_id >> 8) as u8);
@@ -74,7 +74,7 @@ impl PusTelecommand {
         buf
     }
 
-    /// Parses a PUS-C TC from bytes, verifying the CRC.
+    /// Parsea un TC PUS-C desde bytes, verificando el CRC.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, PacketError> {
         if bytes.len() < 6 + 5 + 2 {
             return Err(PacketError::BufferTooShort { need: 13, got: bytes.len() });
@@ -84,7 +84,7 @@ impl PusTelecommand {
         let raw_hdr: [u8; 6] = payload[..6].try_into().unwrap();
         let primary = CcsdsPrimaryHeader::from_bytes(raw_hdr)?;
 
-        // PUS secondary header starts at byte 6
+        // La cabecera secundaria PUS comienza en el byte 6
         let service = payload[7];
         let subservice = payload[8];
         let source_id = u16::from_be_bytes([payload[9], payload[10]]);
@@ -93,17 +93,17 @@ impl PusTelecommand {
         Ok(Self { primary, service, subservice, source_id, app_data })
     }
 
-    /// PUS service type.
+    /// Tipo de servicio PUS.
     pub fn service(&self) -> u8 { self.service }
-    /// PUS subservice type.
+    /// Tipo de subservicio PUS.
     pub fn subservice(&self) -> u8 { self.subservice }
-    /// Application data payload.
+    /// Payload de datos de aplicación.
     pub fn app_data(&self) -> &[u8] { &self.app_data }
-    /// APID of this packet.
+    /// APID de este paquete.
     pub fn apid(&self) -> u16 { self.primary.apid() }
-    /// Sequence count of this packet.
+    /// Contador de secuencia de este paquete.
     pub fn seq_count(&self) -> u16 { self.primary.seq_count() }
-    /// Source identifier.
+    /// Identificador de origen.
     pub fn source_id(&self) -> u16 { self.source_id }
 }
 

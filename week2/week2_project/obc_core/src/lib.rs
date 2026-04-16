@@ -1,16 +1,16 @@
-//! # obc-core — Shared types for the OBC software stack
+//! # obc-core — Tipos compartidos para la pila de software OBC
 //!
-//! This crate contains types shared across all OBC daemons:
-//! [`tc_receiver`], [`obc_router`], [`hk_service`], [`sensor_daemon`], and [`ground_sim`].
+//! Este crate contiene los tipos compartidos entre todos los daemons OBC:
+//! [`tc_receiver`], [`obc_router`], [`hk_service`], [`sensor_daemon`] y [`ground_sim`].
 //!
-//! ## Module overview
+//! ## Resumen de módulos
 //!
-//! | Module    | Purpose                                      |
-//! |-----------|----------------------------------------------|
-//! | [`packet`]  | CCSDS-inspired `SpacePacket` and PUS service IDs |
-//! | [`health`]  | Component health state and system aggregation |
-//! | [`error`]   | Unified `OBCError` type                      |
-//! | [`ipc`]     | Message types for Unix-socket IPC            |
+//! | Módulo    | Propósito                                            |
+//! |-----------|------------------------------------------------------|
+//! | [`packet`]  | `SpacePacket` inspirado en CCSDS e IDs de servicio PUS |
+//! | [`health`]  | Estado de salud de componentes y agregación del sistema |
+//! | [`error`]   | Tipo unificado `OBCError`                            |
+//! | [`ipc`]     | Tipos de mensajes para IPC mediante sockets Unix     |
 
 pub mod error;
 pub mod health;

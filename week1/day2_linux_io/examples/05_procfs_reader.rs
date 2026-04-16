@@ -1,40 +1,40 @@
-//! Example 05 — Reading /proc for health telemetry
+//! Ejemplo 05 — Lectura de /proc para telemetría de salud
 //!
-//! /proc is a virtual filesystem that exposes kernel data structures as files.
-//! For a spacecraft daemon, it's a gold mine for housekeeping telemetry:
-//!   - /proc/uptime: system uptime
-//!   - /proc/self/status: memory usage of the current process
-//!   - /proc/loadavg: CPU load
-//!   - /proc/meminfo: system-wide memory
+//! /proc es un sistema de archivos virtual que expone estructuras de datos del kernel como archivos.
+//! Para un daemon de nave espacial, es una mina de oro para telemetría de mantenimiento:
+//!   - /proc/uptime: tiempo de actividad del sistema
+//!   - /proc/self/status: uso de memoria del proceso actual
+//!   - /proc/loadavg: carga de CPU
+//!   - /proc/meminfo: memoria del sistema completo
 //!
-//! No external crates needed — just text parsing.
-//! This is the raw data that PUS Service 3 HK reports would include.
+//! No se necesitan crates externos — solo parseo de texto.
+//! Estos son los datos brutos que incluirían los reportes HK del Servicio PUS 3.
 //!
-//! Run with:  cargo run --example 05_procfs_reader
+//! Ejecutar con:  cargo run --example 05_procfs_reader
 
 #[tokio::main]
 async fn main() {
-    println!("=== /proc health telemetry ===\n");
+    println!("=== Telemetría de salud desde /proc ===\n");
 
     let uptime   = read_uptime().await;
     let mem      = read_self_memory().await;
     let load     = read_load_avg().await;
     let mem_info = read_mem_info().await;
 
-    println!("System uptime:      {:.1}s ({:.1} hours)", uptime, uptime / 3600.0);
-    println!("Process VmRSS:      {} kB  (resident set size)", mem.rss_kb);
-    println!("Process VmPeak:     {} kB  (peak virtual memory)", mem.vm_peak_kb);
-    println!("Load average:       {:.2} {:.2} {:.2}  (1m 5m 15m)", load.1min, load.5min, load.15min);
-    println!("RAM total:          {} kB", mem_info.total_kb);
-    println!("RAM available:      {} kB  ({:.1}% free)",
+    println!("Tiempo de actividad del sistema: {:.1}s ({:.1} horas)", uptime, uptime / 3600.0);
+    println!("VmRSS del proceso:               {} kB  (tamaño del conjunto residente)", mem.rss_kb);
+    println!("VmPeak del proceso:              {} kB  (memoria virtual máxima)", mem.vm_peak_kb);
+    println!("Carga promedio:                  {:.2} {:.2} {:.2}  (1m 5m 15m)", load.1min, load.5min, load.15min);
+    println!("RAM total:                       {} kB", mem_info.total_kb);
+    println!("RAM disponible:                  {} kB  ({:.1}% libre)",
              mem_info.available_kb,
              mem_info.available_kb as f64 / mem_info.total_kb as f64 * 100.0);
 
     println!();
-    println!("This data would be packed into a TM(3,25) HK report in day 7.");
+    println!("Estos datos se empaquetarían en un reporte HK TM(3,25) en el día 7.");
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Auxiliares ──────────────────────────────────────────────────────────────
 
 async fn read_uptime() -> f64 {
     let s = tokio::fs::read_to_string("/proc/uptime").await.unwrap_or_default();

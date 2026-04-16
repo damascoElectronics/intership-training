@@ -1,15 +1,15 @@
-//! Component health state and system-level health aggregation.
+//! Estado de salud de componentes y agregación de salud a nivel de sistema.
 //!
-//! Derived from Day 5 (FDIR) patterns.  Each daemon reports its own
-//! [`HealthState`] and the supervisor can call [`SystemHealth::aggregate`]
-//! to roll up a single system-level verdict.
+//! Derivado de los patrones de FDIR del Día 5. Cada daemon reporta su propio
+//! [`HealthState`] y el supervisor puede llamar a [`SystemHealth::aggregate`]
+//! para obtener un veredicto único a nivel de sistema.
 
 use serde::{Deserialize, Serialize};
 
-/// A typed identifier for an OBC software component.
+/// Un identificador tipado para un componente de software OBC.
 ///
-/// Using a newtype rather than a bare `String` makes accidental comparisons
-/// between unrelated identifiers a compile-time error.
+/// Usar un newtipo en lugar de un `String` simple convierte las comparaciones accidentales
+/// entre identificadores no relacionados en un error de tiempo de compilación.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ComponentId(pub String);
 
@@ -25,35 +25,35 @@ impl<S: Into<String>> From<S> for ComponentId {
     }
 }
 
-/// Health state of a single component.
+/// Estado de salud de un único componente.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum HealthState {
-    /// All parameters within normal operating limits.
+    /// Todos los parámetros dentro de los límites de operación normales.
     Nominal,
-    /// Component is functional but operating outside nominal limits.
+    /// El componente es funcional pero opera fuera de los límites nominales.
     Degraded {
-        /// Human-readable description of the anomaly.
+        /// Descripción legible de la anomalía.
         reason: String,
     },
-    /// Component has failed and is not providing service.
+    /// El componente ha fallado y no está proporcionando servicio.
     Failed {
-        /// Human-readable description of the failure.
+        /// Descripción legible del fallo.
         reason: String,
     },
 }
 
 impl HealthState {
-    /// Returns `true` for [`HealthState::Nominal`].
+    /// Devuelve `true` para [`HealthState::Nominal`].
     pub fn is_nominal(&self) -> bool {
         matches!(self, HealthState::Nominal)
     }
 
-    /// Returns `true` for [`HealthState::Failed`].
+    /// Devuelve `true` para [`HealthState::Failed`].
     pub fn is_failed(&self) -> bool {
         matches!(self, HealthState::Failed { .. })
     }
 
-    /// Severity as a number (0 = nominal, 1 = degraded, 2 = failed).
+    /// Severidad como número (0 = nominal, 1 = degradado, 2 = fallido).
     pub fn severity(&self) -> u8 {
         match self {
             HealthState::Nominal => 0,
@@ -73,28 +73,28 @@ impl std::fmt::Display for HealthState {
     }
 }
 
-/// Aggregated health report for the full OBC software stack.
+/// Informe de salud agregado para toda la pila de software OBC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemHealth {
-    /// Per-component health states.
+    /// Estados de salud por componente.
     pub components: Vec<(ComponentId, HealthState)>,
-    /// System-level roll-up (worst-case of all components).
+    /// Resumen a nivel de sistema (peor caso de todos los componentes).
     pub overall: HealthState,
 }
 
 impl SystemHealth {
-    /// Create a new [`SystemHealth`] by aggregating the provided component states.
+    /// Crea un nuevo [`SystemHealth`] agregando los estados de componentes proporcionados.
     ///
-    /// The overall state is the worst-case across all components:
-    /// * Any `Failed` → `Failed`
-    /// * Any `Degraded` → `Degraded`
-    /// * All `Nominal` → `Nominal`
+    /// El estado general es el peor caso entre todos los componentes:
+    /// * Cualquier `Failed` → `Failed`
+    /// * Cualquier `Degraded` → `Degraded`
+    /// * Todos `Nominal` → `Nominal`
     pub fn new(components: Vec<(ComponentId, HealthState)>) -> Self {
         let overall = Self::aggregate(&components);
         Self { components, overall }
     }
 
-    /// Compute the worst-case [`HealthState`] across a slice of component states.
+    /// Calcula el [`HealthState`] de peor caso en un slice de estados de componentes.
     pub fn aggregate(components: &[(ComponentId, HealthState)]) -> HealthState {
         let mut worst = HealthState::Nominal;
         for (id, state) in components {
@@ -134,7 +134,7 @@ mod tests {
             (
                 ComponentId("b".into()),
                 HealthState::Degraded {
-                    reason: "high temp".into(),
+                    reason: "temperatura alta".into(),
                 },
             ),
             (ComponentId("c".into()), HealthState::Nominal),
@@ -157,7 +157,7 @@ mod tests {
             (
                 ComponentId("b".into()),
                 HealthState::Failed {
-                    reason: "crash".into(),
+                    reason: "fallo crítico".into(),
                 },
             ),
         ];

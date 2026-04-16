@@ -1,45 +1,45 @@
-//! Space packet types (simplified CCSDS 133.0-B-2).
+//! Tipos de paquetes espaciales (CCSDS 133.0-B-2 simplificado).
 
 use serde::{Deserialize, Serialize};
 
-/// A simplified Space Packet for IPC use.
+/// Un Space Packet simplificado para uso en IPC.
 ///
-/// In a real system this would be built on top of the full `spacepacket` crate
-/// introduced in Day 7.  Here we keep a flat, owned structure that serialises
-/// cleanly with `bincode`.
+/// En un sistema real, esto se construiría sobre el crate `spacepacket` completo
+/// introducido en el Día 7. Aquí mantenemos una estructura plana y propia que serializa
+/// limpiamente con `bincode`.
 ///
-/// # Telecommand vs Telemetry
+/// # Telecomando vs Telemetría
 ///
-/// The convention used throughout this stack is:
-/// * **TC (uplink)** – `apid` has bit 12 set (0x1xxx).
-/// * **TM (downlink)** – `apid` has bit 12 clear (0x0xxx).
+/// La convención usada en toda esta pila es:
+/// * **TC (enlace ascendente)** – `apid` tiene el bit 12 activado (0x1xxx).
+/// * **TM (enlace descendente)** – `apid` tiene el bit 12 desactivado (0x0xxx).
 ///
-/// This mirrors the CCSDS packet-type bit (bit 4 of the primary-header first
-/// octet) but encoded in the APID field for simplicity.
+/// Esto refleja el bit de tipo de paquete CCSDS (bit 4 del primer octeto de la cabecera
+/// primaria) pero codificado en el campo APID por simplicidad.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpacePacket {
-    /// Application Process Identifier (11-bit CCSDS field, stored as u16).
+    /// Identificador de Proceso de Aplicación (campo CCSDS de 11 bits, almacenado como u16).
     pub apid: u16,
-    /// Source sequence count (wraps at 0x3FFF per CCSDS).
+    /// Contador de secuencia de origen (se reinicia en 0x3FFF según CCSDS).
     pub seq_count: u16,
-    /// PUS service type.
+    /// Tipo de servicio PUS.
     pub service: u8,
-    /// PUS service subtype.
+    /// Subtipo de servicio PUS.
     pub subservice: u8,
-    /// Source identifier (process/application that created the packet).
+    /// Identificador de origen (proceso/aplicación que creó el paquete).
     pub source_id: u16,
-    /// Mission elapsed time in milliseconds since epoch.
+    /// Tiempo transcurrido de misión en milisegundos desde el epoch.
     pub timestamp_ms: u64,
-    /// Application data (payload).
+    /// Datos de aplicación (payload).
     pub data: Vec<u8>,
-    /// HMAC-SHA256 authentication tag, present only on TC packets from ground.
+    /// Etiqueta de autenticación HMAC-SHA256, presente solo en paquetes TC desde tierra.
     pub hmac: Option<[u8; 32]>,
 }
 
 impl SpacePacket {
-    /// Create a new telecommand packet.
+    /// Crea un nuevo paquete de telecomando.
     ///
-    /// The APID is stored with bit 12 set to mark it as a TC.
+    /// El APID se almacena con el bit 12 activado para marcarlo como TC.
     pub fn new_tc(
         apid: u16,
         seq_count: u16,
@@ -48,7 +48,7 @@ impl SpacePacket {
         data: Vec<u8>,
     ) -> Self {
         Self {
-            apid: apid | 0x1000, // set TC marker bit
+            apid: apid | 0x1000, // activar bit marcador de TC
             seq_count,
             service,
             subservice,
@@ -59,9 +59,9 @@ impl SpacePacket {
         }
     }
 
-    /// Create a new telemetry packet.
+    /// Crea un nuevo paquete de telemetría.
     ///
-    /// The APID is stored with bit 12 clear to mark it as TM.
+    /// El APID se almacena con el bit 12 desactivado para marcarlo como TM.
     pub fn new_tm(
         apid: u16,
         seq_count: u16,
@@ -70,33 +70,33 @@ impl SpacePacket {
         data: Vec<u8>,
     ) -> Self {
         Self {
-            apid: apid & !0x1000, // clear TC marker bit
+            apid: apid & !0x1000, // desactivar bit marcador de TC
             seq_count,
             service,
             subservice,
-            source_id: 1, // OBC source
+            source_id: 1, // fuente OBC
             timestamp_ms: timestamp_now_ms(),
             data,
             hmac: None,
         }
     }
 
-    /// Returns `true` if this packet is a telecommand (uplink).
+    /// Devuelve `true` si este paquete es un telecomando (enlace ascendente).
     #[inline]
     pub fn is_tc(&self) -> bool {
         self.apid & 0x1000 != 0
     }
 
-    /// Returns the bare APID without the TC marker bit.
+    /// Devuelve el APID sin el bit marcador de TC.
     #[inline]
     pub fn bare_apid(&self) -> u16 {
         self.apid & 0x0FFF
     }
 }
 
-/// Returns the current UNIX time in milliseconds.
+/// Devuelve la hora UNIX actual en milisegundos.
 ///
-/// Falls back to 0 on platforms where `SystemTime` is not available.
+/// Regresa a 0 en plataformas donde `SystemTime` no está disponible.
 fn timestamp_now_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -105,24 +105,24 @@ fn timestamp_now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// PUS-C service identifiers used in this stack.
+/// Identificadores de servicio PUS-C usados en esta pila.
 ///
-/// See `reference/pus_service_catalog.md` for the full table.
+/// Consultar `reference/pus_service_catalog.md` para la tabla completa.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PusService {
-    /// Service 1 – TC Verification
+    /// Servicio 1 – Verificación de TC
     TcVerification = 1,
-    /// Service 3 – Housekeeping
+    /// Servicio 3 – Housekeeping
     Housekeeping = 3,
-    /// Service 5 – Event Reporting
+    /// Servicio 5 – Reporte de Eventos
     Event = 5,
-    /// Service 17 – On-Board Operations (ping/pong)
+    /// Servicio 17 – Operaciones a Bordo (ping/pong)
     Test = 17,
 }
 
 impl PusService {
-    /// Try to convert a raw service number to a [`PusService`].
+    /// Intenta convertir un número de servicio en bruto a un [`PusService`].
     pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             1 => Some(Self::TcVerification),

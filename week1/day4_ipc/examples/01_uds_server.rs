@@ -1,17 +1,17 @@
-//! Example 01 — Unix Domain Socket server
+//! Ejemplo 01 — Servidor Unix Domain Socket
 //!
-//! Unix Domain Sockets (UDS) are the workhorse of Linux daemon IPC.
-//! Compared to TCP sockets:
-//!  ✓  No network stack overhead — data stays in kernel
-//!  ✓  File permissions control access (no network firewalls needed)
-//!  ✓  Credentials can be passed (SO_PEERCRED)
-//!  ✓  ~2× faster than loopback TCP
+//! Los Unix Domain Sockets (UDS) son el caballo de trabajo del IPC entre daemons de Linux.
+//! Comparado con los sockets TCP:
+//!  ✓  Sin sobrecarga de pila de red — los datos permanecen en el kernel
+//!  ✓  Los permisos de archivo controlan el acceso (no se necesitan firewalls de red)
+//!  ✓  Se pueden pasar credenciales (SO_PEERCRED)
+//!  ✓  ~2× más rápido que TCP en loopback
 //!
-//! This server uses LengthDelimitedCodec from tokio-util to frame messages.
-//! Raw streams have no message boundaries — framing is your job.
+//! Este servidor usa LengthDelimitedCodec de tokio-util para enmarcar mensajes.
+//! Los streams crudos no tienen límites de mensajes — el enmarcado es tu responsabilidad.
 //!
-//! Run server first:  cargo run --example 01_uds_server
-//! Then client:       cargo run --example 02_uds_client
+//! Ejecutar el servidor primero:  cargo run --example 01_uds_server
+//! Luego el cliente:              cargo run --example 02_uds_client
 
 use bincode::config::standard;
 use bytes::BytesMut;
@@ -22,7 +22,7 @@ use futures::{SinkExt, StreamExt};
 
 const SOCKET_PATH: &str = "/tmp/day4_ipc_demo.sock";
 
-/// Request from client to server.
+/// Solicitud del cliente al servidor.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     Ping,
@@ -30,7 +30,7 @@ pub enum Request {
     Echo { message: String },
 }
 
-/// Response from server to client.
+/// Respuesta del servidor al cliente.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
     Pong,
@@ -55,40 +55,40 @@ fn handle_request(req: &Request, requests: u64) -> Response {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Remove stale socket file (from previous run)
+    // Eliminar el archivo de socket obsoleto (de la ejecución anterior)
     let _ = std::fs::remove_file(SOCKET_PATH);
     let listener = UnixListener::bind(SOCKET_PATH)?;
-    println!("Server listening on {SOCKET_PATH}");
-    println!("Start client with: cargo run --example 02_uds_client\n");
+    println!("Servidor escuchando en {SOCKET_PATH}");
+    println!("Iniciar el cliente con: cargo run --example 02_uds_client\n");
 
     let mut total_requests = 0u64;
 
     loop {
         let (stream, _addr) = listener.accept().await?;
-        println!("[server] new connection");
+        println!("[servidor] nueva conexión");
 
-        // LengthDelimitedCodec prepends a 4-byte big-endian length to each message.
-        // This solves the framing problem: we know exactly where each message ends.
+        // LengthDelimitedCodec antepone una longitud de 4 bytes en big-endian a cada mensaje.
+        // Esto resuelve el problema del enmarcado: sabemos exactamente dónde termina cada mensaje.
         let mut framed = Framed::new(stream, LengthDelimitedCodec::new());
 
         while let Some(frame) = framed.next().await {
             match frame {
                 Ok(bytes) => {
                     let (req, _): (Request, _) = bincode::serde::decode_from_slice(&bytes, standard())?;
-                    println!("[server] received: {req:?}");
+                    println!("[servidor] recibido: {req:?}");
                     total_requests += 1;
 
                     let resp = handle_request(&req, total_requests);
                     let resp_bytes = bincode::serde::encode_to_vec(&resp, standard())?;
                     framed.send(BytesMut::from(resp_bytes.as_slice()).freeze()).await?;
-                    println!("[server] sent: {resp:?}");
+                    println!("[servidor] enviado: {resp:?}");
                 }
                 Err(e) => {
-                    eprintln!("[server] framing error: {e}");
+                    eprintln!("[servidor] error de enmarcado: {e}");
                     break;
                 }
             }
         }
-        println!("[server] connection closed");
+        println!("[servidor] conexión cerrada");
     }
 }

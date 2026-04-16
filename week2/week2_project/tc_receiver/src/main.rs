@@ -1,17 +1,17 @@
-//! TC Receiver daemon — verifies HMAC authentication and replay protection
-//! before forwarding telecommands to the OBC router.
+//! Daemon TC Receiver — verifica la autenticación HMAC y la protección contra repetición
+//! antes de reenviar telecomandos al router OBC.
 //!
-//! Security boundary: this process accepts bytes from an untrusted source
-//! (simulated RF uplink) and only forwards packets that pass authentication.
-//! It has NO knowledge of actuators or subsystems — it can only forward to
-//! the router socket.
+//! Frontera de seguridad: este proceso acepta bytes de una fuente no confiable
+//! (enlace RF simulado) y solo reenvía paquetes que superan la autenticación.
+//! NO tiene conocimiento de actuadores ni subsistemas — solo puede reenviar al
+//! socket del router.
 //!
-//! # Architecture
+//! # Arquitectura
 //! ```text
 //! [Ground Sim] ──(UnixSocket)──► [tc_receiver] ──(UnixSocket)──► [obc_router]
-//!   TC bytes with HMAC            verify HMAC                     parse & route
-//!                                 check replay window
-//!                                 forward only valid TCs
+//!   bytes TC con HMAC             verificar HMAC                  analizar y enrutar
+//!                                 comprobar ventana de repetición
+//!                                 reenviar solo TCs válidos
 //! ```
 
 use hmac::{Hmac, Mac};
@@ -25,16 +25,16 @@ use tracing::{error, info, warn};
 const TC_UPLINK_SOCKET: &str = "/tmp/obc_tc_uplink.sock";
 const ROUTER_SOCKET: &str = "/tmp/obc_router.sock";
 
-/// HMAC-SHA256 key shared between ground station and OBC.
-/// In a real system this would be loaded from secure storage, not hardcoded.
+/// Clave HMAC-SHA256 compartida entre la estación terrestre y el OBC.
+/// En un sistema real, esto se cargaría desde almacenamiento seguro, no se codificaría directamente.
 const HMAC_KEY: &[u8] = b"spacecraft-tc-key-change-in-prod";
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Sliding window replay protection (64-packet window).
+/// Protección contra repetición con ventana deslizante (ventana de 64 paquetes).
 struct ReplayWindow {
     last_seq: u16,
-    /// Bitmask: bit N set means seq (last_seq − N) was already seen.
+    /// Máscara de bits: el bit N activado significa que seq (last_seq − N) ya fue visto.
     window: u64,
     initialized: bool,
 }
@@ -52,27 +52,27 @@ impl ReplayWindow {
             return Ok(());
         }
 
-        // Compute distance from last_seq (14-bit arithmetic)
+        // Calcular distancia desde last_seq (aritmética de 14 bits)
         let diff = (seq as i32 - self.last_seq as i32).rem_euclid(0x4000);
 
         if diff == 0 {
-            return Err("exact replay");
+            return Err("repetición exacta");
         } else if diff < 64 {
-            // New packet in the window ahead of us — advance
+            // Nuevo paquete en la ventana por delante — avanzar
             self.window = (self.window << diff) | 1;
             self.last_seq = seq;
         } else if diff > 0x3FC0 {
-            // Old packet (behind us in window)
+            // Paquete antiguo (detrás en la ventana)
             let back = (0x4000 - diff) as usize;
             if back >= 64 {
-                return Err("too old");
+                return Err("demasiado antiguo");
             }
             if self.window & (1u64 << back) != 0 {
-                return Err("replay within window");
+                return Err("repetición dentro de la ventana");
             }
             self.window |= 1u64 << back;
         } else {
-            // Far ahead — gap in sequence (acceptable, advance window)
+            // Muy por delante — hueco en la secuencia (aceptable, avanzar ventana)
             self.window = 1;
             self.last_seq = seq;
         }
@@ -82,16 +82,16 @@ impl ReplayWindow {
 
 fn verify_hmac(packet_bytes: &[u8]) -> Result<&[u8], &'static str> {
     if packet_bytes.len() < 32 {
-        return Err("packet too short for HMAC");
+        return Err("paquete demasiado corto para HMAC");
     }
     let (payload, claimed_mac) = packet_bytes.split_at(packet_bytes.len() - 32);
-    let mut mac = HmacSha256::new_from_slice(HMAC_KEY).expect("HMAC accepts any key size");
+    let mut mac = HmacSha256::new_from_slice(HMAC_KEY).expect("HMAC acepta claves de cualquier tamaño");
     mac.update(payload);
     let computed: [u8; 32] = mac.finalize().into_bytes().into();
     if computed.ct_eq(claimed_mac).into() {
         Ok(payload)
     } else {
-        Err("HMAC mismatch")
+        Err("HMAC no coincide")
     }
 }
 
@@ -110,14 +110,14 @@ async fn handle_connection(
     rejected: &mut u64,
 ) {
     loop {
-        // Read length-prefixed message
+        // Leer mensaje con prefijo de longitud
         let mut len_buf = [0u8; 4];
         if stream.read_exact(&mut len_buf).await.is_err() {
-            break; // connection closed
+            break; // conexión cerrada
         }
         let len = u32::from_be_bytes(len_buf) as usize;
         if len > 65536 {
-            warn!("oversized packet ({len} bytes), dropping connection");
+            warn!("paquete demasiado grande ({len} bytes), cerrando conexión");
             break;
         }
 
@@ -126,42 +126,42 @@ async fn handle_connection(
             break;
         }
 
-        // 1. Verify HMAC
+        // 1. Verificar HMAC
         let payload = match verify_hmac(&buf) {
             Ok(p) => p,
             Err(reason) => {
-                warn!("rejected: {reason}");
+                warn!("rechazado: {reason}");
                 *rejected += 1;
                 continue;
             }
         };
 
-        // 2. Deserialize to get sequence count for replay check
+        // 2. Deserializar para obtener el contador de secuencia para la verificación de repetición
         let pkt: SpacePacket = match bincode::serde::decode_from_slice(payload, bincode::config::standard()) {
             Ok((p, _)) => p,
             Err(e) => {
-                warn!("rejected: deserialize failed: {e}");
+                warn!("rechazado: falló la deserialización: {e}");
                 *rejected += 1;
                 continue;
             }
         };
 
-        // 3. Replay protection
+        // 3. Protección contra repetición
         if let Err(reason) = replay.check_and_advance(pkt.seq_count) {
-            warn!("rejected: {reason} (seq={})", pkt.seq_count);
+            warn!("rechazado: {reason} (seq={})", pkt.seq_count);
             *rejected += 1;
             continue;
         }
 
-        // 4. Forward verified payload to router
+        // 4. Reenviar payload verificado al router
         match forward_to_router(payload).await {
             Ok(()) => {
-                info!("forwarded TC apid=0x{:03X} seq={} svc={}/{}",
+                info!("TC reenviado apid=0x{:03X} seq={} svc={}/{}",
                       pkt.apid, pkt.seq_count, pkt.service, pkt.subservice);
                 *accepted += 1;
             }
             Err(e) => {
-                error!("failed to forward to router: {e}");
+                error!("fallo al reenviar al router: {e}");
             }
         }
     }
@@ -174,11 +174,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter("info")
         .init();
 
-    // Remove stale socket file
+    // Eliminar archivo de socket obsoleto
     let _ = std::fs::remove_file(TC_UPLINK_SOCKET);
     let listener = UnixListener::bind(TC_UPLINK_SOCKET)?;
-    info!("TC receiver listening on {TC_UPLINK_SOCKET}");
-    info!("Forwarding verified TCs to {ROUTER_SOCKET}");
+    info!("Receptor TC escuchando en {TC_UPLINK_SOCKET}");
+    info!("Reenviando TCs verificados a {ROUTER_SOCKET}");
 
     let mut replay = ReplayWindow::new();
     let mut accepted = 0u64;
@@ -187,11 +187,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
-                info!("new connection from ground station");
+                info!("nueva conexión desde la estación terrestre");
                 handle_connection(stream, &mut replay, &mut accepted, &mut rejected).await;
-                info!("connection closed: accepted={accepted} rejected={rejected}");
+                info!("conexión cerrada: aceptados={accepted} rechazados={rejected}");
             }
-            Err(e) => error!("accept error: {e}"),
+            Err(e) => error!("error de aceptación: {e}"),
         }
     }
 }

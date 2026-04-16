@@ -1,11 +1,11 @@
-//! Exercise 1 — Async UART echo daemon
+//! Ejercicio 1 — Daemon de eco UART asíncrono
 //!
-//! Implement an async daemon that echoes every line received over serial
-//! with an "ECHO: " prefix.
+//! Implementa un daemon asíncrono que repite cada línea recibida por serie
+//! con el prefijo "ECHO: ".
 //!
-//! NOTE: Requires a virtual serial port pair:
+//! NOTA: Requiere un par de puertos serie virtuales:
 //!   socat -d -d pty,raw,echo=0 pty,raw,echo=0
-//! Use the two /dev/pts/N paths as PORT and the other end for testing.
+//! Usa las dos rutas /dev/pts/N como PORT y el otro extremo para pruebas.
 
 #![allow(dead_code, unused_variables)]
 
@@ -14,36 +14,36 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 pub const PORT_PATH: &str = "/dev/ttyUSB0";
 pub const BAUD_RATE: u32  = 115_200;
 
-/// Opens a serial port and echoes every received line back with "ECHO: " prefix.
-/// Returns when the port is closed or an error occurs.
+/// Abre un puerto serie y repite cada línea recibida de vuelta con el prefijo "ECHO: ".
+/// Retorna cuando el puerto se cierra o ocurre un error.
 pub async fn run_echo_daemon(port_path: &str, baud_rate: u32) -> Result<(), Box<dyn std::error::Error>> {
     todo!(
-        "1. Open port with tokio_serial::new(port_path, baud_rate).open_native_async()
-         2. Wrap in BufReader
-         3. Read lines in a loop with next_line()
-         4. For each line: write 'ECHO: <line>\\n' back to the port
-         5. Log each exchange with eprintln! or tracing"
+        "1. Abrir puerto con tokio_serial::new(port_path, baud_rate).open_native_async()
+         2. Envolver en BufReader
+         3. Leer líneas en un bucle con next_line()
+         4. Por cada línea: escribir 'ECHO: <línea>\\n' de vuelta al puerto
+         5. Registrar cada intercambio con eprintln! o tracing"
     )
 }
 
 #[cfg(test)]
 mod tests {
-    // Note: testing serial I/O requires hardware or a virtual pair.
-    // The acceptance test is: run the daemon on one pty, send a line
-    // from the other pty, observe "ECHO: <line>" comes back.
+    // Nota: probar I/O serie requiere hardware o un par virtual.
+    // La prueba de aceptación es: ejecutar el daemon en un pty, enviar una línea
+    // desde el otro pty, observar que "ECHO: <línea>" regresa.
     #[test]
     fn placeholder() {
-        // Manual test procedure:
+        // Procedimiento de prueba manual:
         // 1. socat -d -d pty,raw,echo=0 pty,raw,echo=0
-        // 2. cargo run --example ex1_uart_echo (update PORT_PATH)
-        // 3. In another terminal: echo "hello" > /dev/pts/N
-        // 4. cat /dev/pts/N should show "ECHO: hello"
+        // 2. cargo run --example ex1_uart_echo (actualizar PORT_PATH)
+        // 3. En otra terminal: echo "hello" > /dev/pts/N
+        // 4. cat /dev/pts/N debe mostrar "ECHO: hello"
     }
 }
 
 #[tokio::main]
 async fn main() {
-    println!("Starting UART echo on {PORT_PATH} at {BAUD_RATE} baud");
+    println!("Iniciando eco UART en {PORT_PATH} a {BAUD_RATE} baudios");
     if let Err(e) = run_echo_daemon(PORT_PATH, BAUD_RATE).await {
         eprintln!("Error: {e}");
     }

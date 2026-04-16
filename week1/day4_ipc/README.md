@@ -1,33 +1,33 @@
-# Day 4 — Inter-Process Communication (IPC)
+# Día 4 — Comunicación entre Procesos (IPC)
 
-**Theme:** Moving data between processes reliably — the plumbing of a real OBC software stack.
+**Tema:** Mover datos entre procesos de forma confiable — la fontanería de un stack de software de OBC real.
 
-A flight software stack is not a monolith. TC receiver, housekeeping service, FDIR monitor,
-and payload manager are separate processes. This day teaches the four IPC mechanisms you will
-actually use, and when to choose each.
-
----
-
-## Learning Goals
-
-- Frame length-delimited messages over Unix Domain Sockets with Tokio + `tokio-util`
-- Use named pipes (FIFOs) for unidirectional, sequential data
-- Leverage POSIX message queue priorities to ensure high-priority commands jump the queue
-- Call D-Bus services with `zbus` for structured, typed IPC
+Un stack de software de vuelo no es un monolito. El receptor de TC, el servicio de housekeeping, el monitor FDIR
+y el gestor de carga útil son procesos separados. Este día enseña los cuatro mecanismos IPC que
+realmente usarás, y cuándo elegir cada uno.
 
 ---
 
-## Examples
+## Objetivos de Aprendizaje
 
-| File | What it demonstrates |
-|------|----------------------|
-| `01_uds_server.rs` | `UnixListener`, `Framed<LengthDelimitedCodec>`, bincode Request/Response |
-| `02_uds_client.rs` | `UnixStream::connect`, matching codec, async send/recv loop |
-| `03_named_pipe.rs` | `nix::unistd::mkfifo`, two tasks sharing a FIFO path |
-| `04_posix_mq.rs` | `nix::mqueue`, priority send, demonstrate PRIO_HIGH arrives first |
-| `05_dbus_intro.rs` | `zbus::interface`, `zbus::proxy`, session bus health service |
+- Enmarcar mensajes delimitados por longitud sobre Unix Domain Sockets con Tokio + `tokio-util`
+- Usar tuberías con nombre (FIFOs) para datos unidireccionales y secuenciales
+- Aprovechar las prioridades de las colas de mensajes POSIX para garantizar que los comandos de alta prioridad salten la cola
+- Llamar a servicios D-Bus con `zbus` para IPC estructurado y tipado
 
-Run the UDS pair (two terminals):
+---
+
+## Ejemplos
+
+| Archivo | Lo que demuestra |
+|---------|-----------------|
+| `01_uds_server.rs` | `UnixListener`, `Framed<LengthDelimitedCodec>`, Request/Response con bincode |
+| `02_uds_client.rs` | `UnixStream::connect`, codec equivalente, bucle async de envío/recepción |
+| `03_named_pipe.rs` | `nix::unistd::mkfifo`, dos tareas compartiendo una ruta FIFO |
+| `04_posix_mq.rs` | `nix::mqueue`, envío con prioridad, demostrar que PRIO_HIGH llega primero |
+| `05_dbus_intro.rs` | `zbus::interface`, `zbus::proxy`, servicio de salud en el bus de sesión |
+
+Ejecutar el par UDS (dos terminales):
 ```
 # Terminal 1
 cargo run -p day4-ipc --example 01_uds_server
@@ -38,11 +38,11 @@ cargo run -p day4-ipc --example 02_uds_client
 
 ---
 
-## Exercises
+## Ejercicios
 
-### Exercise 1 — TM Bus (`ex1_tm_bus.rs`)
+### Ejercicio 1 — Bus TM (`ex1_tm_bus.rs`)
 
-Implement `TmBus`, a publish/subscribe router for telemetry frames:
+Implementa `TmBus`, un enrutador de publicación/suscripción para tramas de telemetría:
 
 ```rust
 pub struct TmBus { /* ... */ }
@@ -54,50 +54,50 @@ impl TmBus {
 }
 ```
 
-- Each APID gets its own channel
-- `publish` fans out to all subscribers for that APID
-- `subscribe` on an already-registered APID returns a second receiver (broadcast)
+- Cada APID obtiene su propio canal
+- `publish` distribuye a todos los suscriptores de ese APID
+- `subscribe` sobre un APID ya registrado devuelve un segundo receptor (broadcast)
 
-Solution: `ex1_tm_bus_sol.rs`
-
----
-
-## IPC Decision Matrix
-
-| Mechanism | Latency | Throughput | Ordering | Persistence | Best for |
-|-----------|---------|------------|----------|-------------|----------|
-| UDS stream | ~1 µs | High | FIFO | None | Bidirectional command/response |
-| UDS datagram | ~1 µs | High | None | None | Fire-and-forget events |
-| Named pipe | ~5 µs | Medium | FIFO | None | Unidirectional byte streams |
-| POSIX MQ | ~5 µs | Medium | Priority | Kernel | Priority-ordered commands |
-| D-Bus | ~50 µs | Low | Per-method | None | Typed service calls, introspection |
+Solución: `ex1_tm_bus_sol.rs`
 
 ---
 
-## Key Concepts
+## Matriz de Decisión IPC
 
-### Length-delimited framing
+| Mecanismo | Latencia | Rendimiento | Ordenamiento | Persistencia | Ideal para |
+|-----------|----------|-------------|--------------|--------------|------------|
+| UDS stream | ~1 µs | Alto | FIFO | Ninguna | Comando/respuesta bidireccional |
+| UDS datagram | ~1 µs | Alto | Ninguno | Ninguna | Eventos fire-and-forget |
+| Tubería con nombre | ~5 µs | Medio | FIFO | Ninguna | Flujos de bytes unidireccionales |
+| POSIX MQ | ~5 µs | Medio | Prioridad | Kernel | Comandos ordenados por prioridad |
+| D-Bus | ~50 µs | Bajo | Por método | Ninguna | Llamadas a servicios tipados, introspección |
 
-Raw TCP and UDS streams are byte streams — there are no message boundaries. `LengthDelimitedCodec`
-prepends a 4-byte big-endian length to each message, so the receiver knows exactly how many bytes
-to read before calling the deserializer.
+---
+
+## Conceptos Clave
+
+### Enmarcado delimitado por longitud
+
+Los streams TCP y UDS crudos son streams de bytes — no hay límites de mensajes. `LengthDelimitedCodec`
+antepone una longitud de 4 bytes en big-endian a cada mensaje, de modo que el receptor sabe exactamente cuántos bytes
+leer antes de llamar al deserializador.
 
 ```
-[len: u32 BE][payload bytes...]
+[len: u32 BE][bytes del payload...]
 ```
 
-Pair with `bincode` for compact binary serialization, or `serde_json` when human-readability matters.
+Combinar con `bincode` para serialización binaria compacta, o `serde_json` cuando importa la legibilidad humana.
 
-### POSIX MQ priorities
+### Prioridades de POSIX MQ
 
-`mq_send` accepts a priority (0–31 on Linux). `mq_receive` always returns the oldest message
-at the *highest* priority, regardless of send order. This is exactly what you want for a TC
-uplink queue: EMERGENCY_STOP packets preempt routine parameter uploads.
+`mq_send` acepta una prioridad (0–31 en Linux). `mq_receive` siempre devuelve el mensaje más antiguo
+con la *mayor* prioridad, independientemente del orden de envío. Esto es exactamente lo que se necesita para una cola
+de uplink TC: los paquetes EMERGENCY_STOP tienen prioridad sobre las subidas de parámetros rutinarias.
 
-### Why not shared memory?
+### ¿Por qué no memoria compartida?
 
-Shared memory is fastest (zero copy) but requires explicit synchronization — mutexes, semaphores,
-or lock-free structures. It has no inherent message boundary, no blocking receive, and
-easy-to-miss memory-ordering bugs. Reserve it for truly latency-critical, high-bandwidth paths
-(e.g., streaming sensor data at 10 MHz). For command/response and telemetry distribution,
-UDS or POSIX MQ are safer and simpler.
+La memoria compartida es la más rápida (cero copia) pero requiere sincronización explícita — mutexes, semáforos,
+o estructuras libres de bloqueo. No tiene límites de mensajes inherentes, no tiene recepción bloqueante, y
+tiene errores de ordenamiento de memoria fáciles de pasar por alto. Resérvala para rutas verdaderamente críticas
+en latencia y alto ancho de banda (ej., datos de sensor en streaming a 10 MHz). Para distribución de comandos/respuesta
+y telemetría, UDS o POSIX MQ son más seguros y simples.

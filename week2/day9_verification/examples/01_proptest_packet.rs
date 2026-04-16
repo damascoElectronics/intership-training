@@ -1,23 +1,23 @@
-//! Example 01 — Property-based testing of CCSDS packet round-trips
+//! Ejemplo 01 — Pruebas basadas en propiedades para viajes de ida y vuelta de paquetes CCSDS
 //!
-//! Property-based testing generates MANY random inputs and checks that
-//! your invariants hold for ALL of them.  Compare to example-based testing
-//! which only checks a few hand-picked cases.
+//! Las pruebas basadas en propiedades generan MUCHAS entradas aleatorias y verifican que
+//! tus invariantes se cumplan para TODAS ellas. Compáralas con las pruebas basadas en ejemplos,
+//! que solo verifican unos pocos casos seleccionados manualmente.
 //!
-//! The fundamental property for any codec: parse(serialize(x)) == x
+//! La propiedad fundamental para cualquier codec: parse(serialize(x)) == x
 //!
-//! Run tests with:  cargo test --example 01_proptest_packet
+//! Ejecutar pruebas con:  cargo test --example 01_proptest_packet
 
 use proptest::prelude::*;
 
-// ── Inline minimal CCSDS primary header (to avoid cross-crate deps) ────────────
+// ── Cabecera primaria CCSDS mínima en línea (para evitar dependencias entre crates) ────────────
 
 #[derive(Debug, Clone, PartialEq)]
 struct Header {
     is_tc: bool,
-    apid: u16,       // 11-bit: 0..=0x7FE
-    seq_count: u16,  // 14-bit: 0..=0x3FFF
-    data_len: u16,   // as stored: actual_len - 1
+    apid: u16,       // 11 bits: 0..=0x7FE
+    seq_count: u16,  // 14 bits: 0..=0x3FFF
+    data_len: u16,   // tal como se almacena: longitud_real - 1
 }
 
 impl Header {
@@ -48,18 +48,18 @@ impl Header {
     }
 }
 
-// ── Properties ─────────────────────────────────────────────────────────────────
+// ── Propiedades ─────────────────────────────────────────────────────────────────
 
 proptest! {
-    /// For any valid APID, the serialized header can be parsed back identically.
+    /// Para cualquier APID válido, la cabecera serializada puede ser analizada de vuelta de forma idéntica.
     #[test]
     fn roundtrip_apid(apid in 0u16..=0x7FEu16) {
         let h = Header { is_tc: true, apid, seq_count: 0, data_len: 0 };
-        let parsed = Header::parse(h.serialize()).expect("must parse");
+        let parsed = Header::parse(h.serialize()).expect("debe poder analizarse");
         prop_assert_eq!(parsed.apid, apid);
     }
 
-    /// For any valid sequence count, round-trip preserves it.
+    /// Para cualquier contador de secuencia válido, el viaje de ida y vuelta lo preserva.
     #[test]
     fn roundtrip_seq_count(seq in 0u16..=0x3FFFu16) {
         let h = Header { is_tc: false, apid: 0x100, seq_count: seq, data_len: 0 };
@@ -67,7 +67,7 @@ proptest! {
         prop_assert_eq!(parsed.seq_count, seq);
     }
 
-    /// Packet type flag round-trips correctly.
+    /// El indicador de tipo de paquete sobrevive correctamente al viaje de ida y vuelta.
     #[test]
     fn roundtrip_packet_type(is_tc: bool) {
         let h = Header { is_tc, apid: 0x050, seq_count: 42, data_len: 10 };
@@ -75,7 +75,7 @@ proptest! {
         prop_assert_eq!(parsed.is_tc, is_tc);
     }
 
-    /// parse(serialize(x)) == x for all valid combinations.
+    /// parse(serialize(x)) == x para todas las combinaciones válidas.
     #[test]
     fn full_roundtrip(
         is_tc: bool,
@@ -84,22 +84,22 @@ proptest! {
         data_len: u16,
     ) {
         let h = Header { is_tc, apid, seq_count: seq, data_len };
-        let parsed = Header::parse(h.serialize()).expect("must parse");
+        let parsed = Header::parse(h.serialize()).expect("debe poder analizarse");
         prop_assert_eq!(parsed, h);
     }
 
-    /// Parsing arbitrary 6 bytes must never PANIC — it may return None.
+    /// Analizar 6 bytes arbitrarios NUNCA debe entrar en PÁNICO — puede devolver None.
     #[test]
     fn no_panic_on_arbitrary_bytes(bytes: [u8; 6]) {
-        // Header::parse returns Option — must not panic
+        // Header::parse devuelve Option — no debe entrar en pánico
         let _ = Header::parse(bytes);
     }
 }
 
 fn main() {
-    println!("Run with: cargo test --example 01_proptest_packet");
+    println!("Ejecutar con: cargo test --example 01_proptest_packet");
     println!();
-    println!("proptest will generate 256 random inputs for each property.");
-    println!("When a failure is found, it shrinks to the MINIMAL failing case.");
-    println!("This is much more powerful than writing 10 hand-picked test cases.");
+    println!("proptest generará 256 entradas aleatorias para cada propiedad.");
+    println!("Cuando encuentre un fallo, lo reducirá al caso mínimo que falla.");
+    println!("Esto es mucho más potente que escribir 10 casos de prueba seleccionados manualmente.");
 }

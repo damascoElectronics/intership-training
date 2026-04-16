@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution
+//! Ejercicio 1 — Solución
 
 #![allow(dead_code)]
 
@@ -14,7 +14,7 @@ pub async fn run_echo_daemon(port_path: &str, baud_rate: u32) -> Result<(), Box<
     let reader = BufReader::new(port);
     let mut lines = reader.lines();
 
-    eprintln!("UART echo daemon running on {port_path}");
+    eprintln!("Daemon de eco UART ejecutándose en {port_path}");
 
     while let Some(line) = lines.next_line().await? {
         eprintln!("  RX: '{line}'");

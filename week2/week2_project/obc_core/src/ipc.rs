@@ -1,48 +1,48 @@
-//! IPC message types for inter-process communication over Unix domain sockets.
+//! Tipos de mensajes IPC para la comunicación entre procesos mediante sockets de dominio Unix.
 //!
-//! All messages are serialised with `bincode` (length-prefixed) so that
-//! framing is handled uniformly across all daemons.
+//! Todos los mensajes se serializan con `bincode` (con prefijo de longitud) para que
+//! el enmarcado se maneje de forma uniforme en todos los daemons.
 
 use crate::health::SystemHealth;
 use crate::packet::SpacePacket;
 use serde::{Deserialize, Serialize};
 
-/// A message sent between OBC daemons over Unix domain sockets.
+/// Un mensaje enviado entre daemons OBC mediante sockets de dominio Unix.
 ///
-/// All daemons speak this envelope format.  The inner payload carries
-/// either a space packet, a health query/report, or a shutdown signal.
+/// Todos los daemons usan este formato de sobre. El payload interno transporta
+/// un paquete espacial, una consulta/informe de salud o una señal de apagado.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum IpcMessage {
-    /// A space packet (TC or TM) being forwarded between daemons.
+    /// Un paquete espacial (TC o TM) siendo reenviado entre daemons.
     Packet(SpacePacket),
-    /// Request a health report from the receiving daemon.
+    /// Solicitar un informe de salud al daemon receptor.
     HealthQuery {
-        /// Name of the requesting component.
+        /// Nombre del componente solicitante.
         requester: String,
     },
-    /// Response to a [`IpcMessage::HealthQuery`].
+    /// Respuesta a un [`IpcMessage::HealthQuery`].
     HealthReport(SystemHealth),
-    /// Instructs the receiver to shut down gracefully.
+    /// Indica al receptor que se apague de forma ordenada.
     Shutdown,
 }
 
-/// A request in a request-response IPC exchange.
+/// Una solicitud en un intercambio IPC de solicitud-respuesta.
 ///
-/// The `id` field is used to correlate requests with responses when
-/// multiple in-flight requests are possible.
+/// El campo `id` se usa para correlacionar solicitudes con respuestas cuando
+/// es posible que haya múltiples solicitudes en vuelo.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IpcRequest {
-    /// Monotonically increasing request identifier (per sender).
+    /// Identificador de solicitud monótonamente creciente (por remitente).
     pub id: u32,
-    /// The actual request payload.
+    /// El payload real de la solicitud.
     pub payload: IpcMessage,
 }
 
-/// A response to an [`IpcRequest`].
+/// Una respuesta a un [`IpcRequest`].
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IpcResponse {
-    /// Echoes the [`IpcRequest::id`] so the caller can match the response.
+    /// Repite el [`IpcRequest::id`] para que el llamante pueda correlacionar la respuesta.
     pub request_id: u32,
-    /// The response payload.
+    /// El payload de la respuesta.
     pub payload: IpcMessage,
 }

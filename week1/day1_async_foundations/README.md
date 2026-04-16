@@ -1,278 +1,279 @@
-# Day 1: Async Foundations with Tokio
+# Día 1: Fundamentos de Async con Tokio
 
-## Why Async? Bare-Metal vs. Linux Daemon Land
+## ¿Por qué Async? Metal Desnudo vs. Daemons en Linux
 
-On your STM32 or ESP32 you probably used one of:
-- A **superloop** (`while(1) { poll_uart(); poll_spi(); ... }`)
-- An **RTOS** (FreeRTOS tasks + queues)
-- **Interrupt handlers** waking tasks
+En tu STM32 o ESP32 probablemente usaste alguna de estas opciones:
+- Un **superloop** (`while(1) { poll_uart(); poll_spi(); ... }`)
+- Un **RTOS** (tareas FreeRTOS + colas)
+- **Manejadores de interrupciones** que despiertan tareas
 
-The fundamental problem is the same everywhere: **you have N things that need attention, and you can only do one at a time on one CPU core.** You need a scheduler to multiplex them.
+El problema fundamental es el mismo en todos lados: **tienes N cosas que necesitan atención, y solo puedes hacer una a la vez en un núcleo de CPU.** Necesitas un planificador para multiplexarlas.
 
-On bare metal you had two tools: interrupts (hardware pushes you) and polling (you pull). On Linux you get a third: **the OS kernel's I/O event system** (`epoll`). Tokio's async runtime is built on top of `epoll`, which means:
+En metal desnudo tenías dos herramientas: interrupciones (el hardware te empuja) y polling (tú jalas). En Linux obtienes una tercera: **el sistema de eventos de I/O del kernel** (`epoll`). El runtime async de Tokio está construido sobre `epoll`, lo que significa:
 
-- No wasted CPU spinning in a tight poll loop
-- The kernel wakes your thread *only* when data arrives
-- A single OS thread can manage thousands of concurrent I/O operations
-- You write sequential-looking code (`let data = socket.read().await`) that is actually cooperative multitasking under the hood
+- Sin CPU desperdiciada girando en un bucle de polling ajustado
+- El kernel despierta tu hilo *solo* cuando llegan datos
+- Un único hilo del SO puede gestionar miles de operaciones de I/O concurrentes
+- Escribes código de aspecto secuencial (`let data = socket.read().await`) que en realidad es multitarea cooperativa bajo el capó
 
-**Why not just use OS threads?** Each OS thread costs ~8 MB of stack by default. A daemon managing 100 sensor connections would use 800 MB just for stacks. Tokio tasks cost ~hundreds of bytes. The math is obvious.
+**¿Por qué no usar hilos del SO?** Cada hilo del SO cuesta ~8 MB de pila por defecto. Un daemon gestionando 100 conexiones de sensores usaría 800 MB solo en pilas. Las tareas de Tokio cuestan ~cientos de bytes. La matemática es obvia.
 
 ---
 
-## Tokio Runtime Internals
+## Internos del Runtime de Tokio
 
-### The Big Picture
+### El Panorama General
 
 ```
-Your code (async fns + .await points)
+Tu código (async fns + puntos .await)
          │
          ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   Tokio Runtime                         │
+│                   Runtime de Tokio                      │
 │                                                         │
 │  ┌──────────────┐    ┌──────────────┐                  │
-│  │  Worker      │    │  Worker      │  ← OS threads    │
-│  │  Thread 0    │    │  Thread 1    │    (default:      │
+│  │  Hilo        │    │  Hilo        │  ← hilos del SO  │
+│  │  Worker 0    │    │  Worker 1    │    (por defecto:  │
 │  │              │    │              │     num_cpus)     │
-│  │  [Task A]    │    │  [Task C]    │                  │
-│  │  [Task B]    │    │  [Task D]    │                  │
+│  │  [Tarea A]   │    │  [Tarea C]   │                  │
+│  │  [Tarea B]   │    │  [Tarea D]   │                  │
 │  └──────┬───────┘    └──────┬───────┘                  │
 │         │                  │                            │
 │         └────────┬─────────┘                           │
-│                  │  work-stealing queue                 │
+│                  │  cola work-stealing                  │
 │                  ▼                                      │
 │  ┌───────────────────────────────┐                     │
 │  │         Reactor               │                     │
-│  │  (mio library → epoll/kqueue) │                     │
+│  │  (biblioteca mio → epoll/kqueue) │                  │
 │  │                               │                     │
-│  │  Registered fds: socket A,    │                     │
+│  │  fds registrados: socket A,   │                     │
 │  │  socket B, timer C, pipe D... │                     │
 │  └───────────────────────────────┘                     │
 └─────────────────────────────────────────────────────────┘
          │
          ▼
-    Linux kernel (epoll_wait)
+    Kernel de Linux (epoll_wait)
 ```
 
-### Work-Stealing Thread Pool
+### Pool de Hilos con Work-Stealing
 
-Tokio spawns N OS threads (default: number of CPU cores). Each thread has a **local run queue** of tasks. When a thread's queue is empty, it **steals** tasks from other threads' queues. This means:
+Tokio lanza N hilos del SO (por defecto: número de núcleos de CPU). Cada hilo tiene una **cola de ejecución local** de tareas. Cuando la cola de un hilo está vacía, **roba** tareas de las colas de otros hilos. Esto significa:
 
-- CPU work automatically spreads across cores without you thinking about it
-- A task can run on different OS threads between `.await` points (this is why `Send` matters — see below)
-- No thread is ever idle while there's work to do
+- El trabajo de CPU se distribuye automáticamente entre núcleos sin que tengas que pensar en ello
+- Una tarea puede ejecutarse en diferentes hilos del SO entre puntos `.await` (por eso importa `Send` — ver más abajo)
+- Ningún hilo está ocioso mientras haya trabajo por hacer
 
-### The Reactor (epoll Integration)
+### El Reactor (Integración con epoll)
 
 ```
                     ┌─────────────────────────────┐
-                    │  Your task calls             │
+                    │  Tu tarea llama              │
                     │  socket.read().await         │
                     └──────────┬──────────────────┘
                                │
                     ┌──────────▼──────────────────┐
-                    │  Future::poll() returns      │
+                    │  Future::poll() devuelve     │
                     │  Poll::Pending               │
-                    │  (no data available yet)     │
+                    │  (aún no hay datos)          │
                     └──────────┬──────────────────┘
-                               │ registers Waker with reactor
+                               │ registra Waker con el reactor
                     ┌──────────▼──────────────────┐
-                    │  Reactor calls               │
+                    │  El reactor llama            │
                     │  epoll_ctl(ADD, fd, EPOLLIN) │
                     └──────────┬──────────────────┘
-                               │ task is parked (uses 0 CPU)
+                               │ la tarea queda suspendida (usa 0 CPU)
                     ┌──────────▼──────────────────┐
-                    │  ... time passes ...         │
-                    │  kernel receives TCP packet  │
+                    │  ... pasa el tiempo ...      │
+                    │  el kernel recibe paquete TCP│
                     └──────────┬──────────────────┘
                                │
                     ┌──────────▼──────────────────┐
-                    │  epoll_wait() returns fd     │
-                    │  Reactor calls waker.wake()  │
+                    │  epoll_wait() devuelve fd    │
+                    │  El reactor llama waker.wake()│
                     └──────────┬──────────────────┘
-                               │ task re-queued
+                               │ tarea re-encolada
                     ┌──────────▼──────────────────┐
-                    │  Future::poll() called again │
-                    │  returns Poll::Ready(data)   │
+                    │  Future::poll() vuelve a     │
+                    │  llamarse, devuelve          │
+                    │  Poll::Ready(data)           │
                     └─────────────────────────────┘
 ```
 
-This is the core of async Rust: `.await` is sugar for "poll this future; if it returns Pending, register a waker and give up the thread; when woken, poll again."
+Este es el núcleo de async en Rust: `.await` es azúcar sintáctico para "haz polling de este future; si devuelve Pending, registra un waker y cede el hilo; cuando se despierte, haz polling de nuevo."
 
-### What `#[tokio::main]` Actually Expands To
+### Lo que `#[tokio::main]` Expande en Realidad
 
 ```rust
-// What you write:
+// Lo que escribes:
 #[tokio::main]
 async fn main() { ... }
 
-// What the macro generates (approximately):
+// Lo que genera la macro (aproximadamente):
 fn main() {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { ... })  // runs your async main on the runtime
+        .block_on(async { ... })  // ejecuta tu async main en el runtime
 }
 ```
 
 ---
 
-## `spawn` vs `spawn_blocking`: The Critical Distinction
+## `spawn` vs `spawn_blocking`: La Distinción Crítica
 
-This is where your embedded background might trip you up.
+Aquí es donde tu experiencia en embebidos puede confundirte.
 
-**In your RTOS world:** calling `HAL_SPI_Transmit()` blocks the calling task. Other RTOS tasks still run because the RTOS preemptively switches.
+**En tu mundo RTOS:** llamar a `HAL_SPI_Transmit()` bloquea la tarea que llama. Las demás tareas del RTOS siguen ejecutándose porque el RTOS hace cambios de contexto de forma preemptiva.
 
-**In tokio:** calling a blocking function **blocks the entire OS thread**. That OS thread cannot run any other async task until the blocking call returns. If all worker threads are blocked, new I/O events sit unprocessed.
+**En tokio:** llamar a una función bloqueante **bloquea el hilo del SO completo**. Ese hilo del SO no puede ejecutar ninguna otra tarea async hasta que la llamada bloqueante retorne. Si todos los hilos worker están bloqueados, los nuevos eventos de I/O quedan sin procesar.
 
 ```
-Worker Thread 0: [Task A ──────────────────────────────────────] blocked!
-                         ^ calls std::fs::read() here
-                           cannot run Task B, C, D until it returns
+Hilo Worker 0: [Tarea A ──────────────────────────────────────] ¡bloqueado!
+                         ^ llama std::fs::read() aquí
+                           no puede ejecutar Tarea B, C, D hasta que retorne
 ```
 
-The rule: **never call blocking functions inside async code.**
+La regla: **nunca llames funciones bloqueantes dentro de código async.**
 
 ```rust
-// BAD: blocks the worker thread
-let data = std::fs::read("/dev/sda")?;   // DON'T
-let _    = std::thread::sleep(dur);       // DON'T
-let _    = mutex.lock().unwrap();         // careful with contended mutexes
+// MAL: bloquea el hilo worker
+let data = std::fs::read("/dev/sda")?;   // NO HAGAS ESTO
+let _    = std::thread::sleep(dur);       // NO HAGAS ESTO
+let _    = mutex.lock().unwrap();         // cuidado con mutexes en disputa
 
-// GOOD: runs blocking work on a dedicated blocking thread pool
-let data = tokio::fs::read("/dev/sda").await?;    // async I/O
-tokio::time::sleep(dur).await;                     // async sleep
-tokio::task::spawn_blocking(|| heavy_cpu_work()).await?;  // offload blocking
+// BIEN: ejecuta trabajo bloqueante en un pool de hilos bloqueantes dedicado
+let data = tokio::fs::read("/dev/sda").await?;    // I/O asíncrono
+tokio::time::sleep(dur).await;                     // sleep asíncrono
+tokio::task::spawn_blocking(|| heavy_cpu_work()).await?;  // delega lo bloqueante
 ```
 
-`spawn_blocking` moves the closure to a separate thread pool that can grow unboundedly (up to 512 threads by default). Those threads are *allowed* to block — they're not async worker threads.
+`spawn_blocking` mueve el closure a un pool de hilos separado que puede crecer ilimitadamente (hasta 512 hilos por defecto). Esos hilos *pueden* bloquearse — no son hilos worker async.
 
 ```
-Async Worker Pool (fixed, e.g. 8 threads):
-  Worker 0:  Task A, Task B, Task C ...   ← async tasks, never block
-  Worker 1:  Task D, Task E ...
+Pool de Workers Async (fijo, ej. 8 hilos):
+  Worker 0:  Tarea A, Tarea B, Tarea C ...   ← tareas async, nunca se bloquean
+  Worker 1:  Tarea D, Tarea E ...
 
-Blocking Thread Pool (growable, up to 512):
-  Blocking 0: std::fs::read(...)          ← can block all day
-  Blocking 1: heavy_compression(...)
+Pool de Hilos Bloqueantes (ampliable, hasta 512):
+  Bloqueante 0: std::fs::read(...)          ← puede bloquearse todo el día
+  Bloqueante 1: heavy_compression(...)
 ```
 
 ---
 
-## `Send + Sync`: Why the Compiler Tracks This
+## `Send + Sync`: Por qué el Compilador Hace Seguimiento de Esto
 
-Between two `.await` points, your task may be moved to a **different OS thread** by the work-stealing scheduler. This means everything your future holds across an `.await` must implement `Send` (safe to move between threads).
+Entre dos puntos `.await`, tu tarea puede ser movida a un **hilo del SO diferente** por el planificador work-stealing. Esto significa que todo lo que tu future mantiene a través de un `.await` debe implementar `Send` (seguro para mover entre hilos).
 
 ```rust
-// This DOES NOT compile:
-let rc = std::rc::Rc::new(42);   // Rc is !Send (not thread-safe ref count)
-do_something().await;             // task could migrate threads here
-println!("{}", rc);               // rc is still held, but we might be on a new thread!
+// Esto NO compila:
+let rc = std::rc::Rc::new(42);   // Rc es !Send (conteo de referencias no thread-safe)
+do_something().await;             // la tarea podría migrar de hilo aquí
+println!("{}", rc);               // rc sigue siendo mantenido, ¡pero podríamos estar en un nuevo hilo!
 
-// Use Arc instead:
-let arc = std::sync::Arc::new(42);  // Arc is Send (atomic ref count)
+// Usa Arc en su lugar:
+let arc = std::sync::Arc::new(42);  // Arc es Send (conteo de referencias atómico)
 do_something().await;
-println!("{}", arc);                 // fine: Arc can cross thread boundaries
+println!("{}", arc);                 // correcto: Arc puede cruzar límites de hilos
 ```
 
-The Rust compiler **statically verifies** `Send` bounds at compile time. It's doing the thread-safety analysis that you'd do manually in C, and refusing to compile if it finds a violation.
+El compilador de Rust **verifica estáticamente** los límites de `Send` en tiempo de compilación. Está haciendo el análisis de seguridad de hilos que harías manualmente en C, y se niega a compilar si encuentra una violación.
 
 ---
 
-## Structured Concurrency and Task Cancellation
+## Concurrencia Estructurada y Cancelación de Tareas
 
-**Unstructured:** fire tasks and hope they finish (the old threading model)
+**No estructurada:** lanzar tareas y esperar que terminen (el modelo antiguo de hilos)
 ```
-main spawns task A → task A spawns task B → main exits → task B keeps running?
+main lanza tarea A → tarea A lanza tarea B → main sale → ¿tarea B sigue ejecutándose?
 ```
 
-**Structured:** tasks form a tree; parent outlives children; cancellation propagates
+**Estructurada:** las tareas forman un árbol; el padre vive más que los hijos; la cancelación se propaga
 ```
 main
- ├── task A (heartbeat sender)
- │    └── cancelled when token drops
- └── task B (telemetry collector)
-      └── cancelled when token drops
+ ├── tarea A (emisor de heartbeat)
+ │    └── cancelada cuando el token se descarta
+ └── tarea B (colector de telemetría)
+      └── cancelada cuando el token se descarta
 ```
 
-`CancellationToken` from `tokio-util` is the idiomatic tool:
+`CancellationToken` de `tokio-util` es la herramienta idiomática:
 ```rust
 let token = CancellationToken::new();
 
-// Give a clone to each child task
-let child_token = token.child_token(); // child cancel propagates from parent
+// Dale un clon a cada tarea hija
+let child_token = token.child_token(); // la cancelación del hijo se propaga desde el padre
 tokio::spawn(async move {
     tokio::select! {
-        _ = child_token.cancelled() => { /* clean up and exit */ }
+        _ = child_token.cancelled() => { /* limpiar y salir */ }
         _ = do_work() => {}
     }
 });
 
-// Later, cancel everything
-token.cancel();  // all child tokens are also cancelled
+// Más tarde, cancela todo
+token.cancel();  // todos los tokens hijos también son cancelados
 ```
 
 ---
 
-## Graceful Shutdown Pattern
+## Patrón de Apagado Ordenado
 
-Real daemons need to handle `SIGTERM` (systemd stopping the service) and `SIGINT` (Ctrl+C during development). The pattern:
+Los daemons reales necesitan manejar `SIGTERM` (systemd deteniendo el servicio) y `SIGINT` (Ctrl+C durante el desarrollo). El patrón:
 
-1. Install signal handler
-2. Broadcast cancellation token
-3. Wait for tasks to acknowledge (with timeout so we don't hang forever)
-4. Flush any buffered state (telemetry, logs)
-5. Exit
+1. Instalar manejador de señales
+2. Difundir token de cancelación
+3. Esperar a que las tareas confirmen (con timeout para no colgarse indefinidamente)
+4. Vaciar cualquier estado en buffer (telemetría, logs)
+5. Salir
 
 ```
-SIGTERM arrives
+Llega SIGTERM
       │
       ▼
 CancellationToken::cancel()
       │
-      ├──→ Task A: select! sees cancelled(), sends final telemetry, returns
-      ├──→ Task B: select! sees cancelled(), flushes buffer, returns
-      └──→ Task C: select! sees cancelled(), closes device, returns
+      ├──→ Tarea A: select! ve cancelled(), envía telemetría final, retorna
+      ├──→ Tarea B: select! ve cancelled(), vacía buffer, retorna
+      └──→ Tarea C: select! ve cancelled(), cierra dispositivo, retorna
       │
-      ▼ (or timeout after 5s if a task hangs)
+      ▼ (o timeout tras 5s si una tarea se cuelga)
 tokio::join!(handle_a, handle_b, handle_c)
       │
       ▼
-process exits cleanly (systemd sees clean exit, no restart)
+el proceso sale limpiamente (systemd ve salida limpia, sin reinicio)
 ```
 
 ---
 
-## Running the Examples
+## Ejecutar los Ejemplos
 
 ```bash
-# From week1/day1_async_foundations/
+# Desde week1/day1_async_foundations/
 cargo run --example 01_basic_runtime
 cargo run --example 02_spawn_tasks
 cargo run --example 03_channels
 cargo run --example 04_select_macro
 cargo run --example 05_graceful_shutdown
 
-# Exercises (try to implement before looking at solution)
+# Ejercicios (intenta implementar antes de ver la solución)
 cargo run --example ex1_heartbeat
 cargo run --example ex1_heartbeat_sol
 
-# Run tests
+# Ejecutar tests
 cargo test
 ```
 
 ---
 
-## Key Takeaways
+## Conceptos Clave
 
-| Concept | Bare Metal Analog | Tokio Equivalent |
+| Concepto | Analogía en Metal Desnudo | Equivalente en Tokio |
 |---------|------------------|-----------------|
-| Superloop polling | `while(1) { poll_all(); }` | `epoll_wait` in reactor |
-| ISR waking a task | HAL interrupt → RTOS queue | `Waker::wake()` |
-| RTOS task switch | preemptive context switch | `.await` yield point |
-| Blocking HAL call | `HAL_SPI_Transmit()` | `spawn_blocking` |
+| Polling con superloop | `while(1) { poll_all(); }` | `epoll_wait` en el reactor |
+| ISR despertando una tarea | interrupción HAL → cola RTOS | `Waker::wake()` |
+| Cambio de tarea RTOS | cambio de contexto preemptivo | punto de cesión `.await` |
+| Llamada bloqueante HAL | `HAL_SPI_Transmit()` | `spawn_blocking` |
 | Mutex | `osMutexAcquire()` | `tokio::sync::Mutex` |
-| Task notification | `osTaskNotify()` | `tokio::sync::Notify` |
-| Message queue | `osMessageQueuePut()` | `tokio::sync::mpsc` |
+| Notificación de tarea | `osTaskNotify()` | `tokio::sync::Notify` |
+| Cola de mensajes | `osMessageQueuePut()` | `tokio::sync::mpsc` |

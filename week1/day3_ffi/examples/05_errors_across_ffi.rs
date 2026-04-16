@@ -1,28 +1,28 @@
-//! Example 05 — Error handling across the FFI boundary
+//! Ejemplo 05 — Manejo de errores a través del límite FFI
 //!
-//! C functions return error codes (0/-1/errno). Rust wants Result<T, E>.
-//! The bridge between them requires careful thought:
-//!   1. Map C error codes to Rust error types
-//!   2. Panics MUST NOT cross the FFI boundary (undefined behaviour)
-//!   3. Use std::panic::catch_unwind in extern "C" callbacks
+//! Las funciones de C devuelven códigos de error (0/-1/errno). Rust quiere Result<T, E>.
+//! El puente entre ambos requiere reflexión cuidadosa:
+//!   1. Mapear códigos de error de C a tipos de error de Rust
+//!   2. Los pánicos NO DEBEN cruzar el límite FFI (comportamiento indefinido)
+//!   3. Usar std::panic::catch_unwind en callbacks extern "C"
 //!
-//! Run with:  cargo run --example 05_errors_across_ffi
+//! Ejecutar con:  cargo run --example 05_errors_across_ffi
 
 use std::panic;
 
-// ── C error code → Rust Result ────────────────────────────────────────────────
+// ── Código de error de C → Result de Rust ────────────────────────────────────────────────
 
-/// Error codes returned by our C "sensor driver" (see ccsds_framer.c for context)
+/// Códigos de error devueltos por nuestro "controlador de sensor" en C (ver ccsds_framer.c como contexto)
 #[derive(Debug, thiserror::Error)]
 pub enum FfiError {
-    #[error("operation succeeded")]
-    // Not actually an error, but shows the code-mapping pattern
+    #[error("operación exitosa")]
+    // No es realmente un error, pero muestra el patrón de mapeo de códigos
     Success,
-    #[error("invalid argument (C errno EINVAL)")]
+    #[error("argumento inválido (errno EINVAL de C)")]
     InvalidArgument,
-    #[error("device not ready")]
+    #[error("dispositivo no listo")]
     NotReady,
-    #[error("unknown C error code: {0}")]
+    #[error("código de error C desconocido: {0}")]
     Unknown(i32),
 }
 
@@ -37,62 +37,62 @@ impl FfiError {
     }
 }
 
-/// Wrapper that maps a C return code to Result<(), FfiError>
+/// Envoltorio que mapea un código de retorno de C a Result<(), FfiError>
 fn call_c_function_safely(code: i32) -> Result<(), FfiError> {
     FfiError::from_c_code(code)
 }
 
-// ── catch_unwind at FFI boundary ──────────────────────────────────────────────
+// ── catch_unwind en el límite FFI ──────────────────────────────────────────────
 
-/// A Rust callback that will be called from C code.
-/// ANY panic here would be UB — the C stack doesn't know about Rust panics.
-/// We MUST catch it.
+/// Un callback de Rust que será llamado desde código C.
+/// CUALQUIER pánico aquí sería UB — la pila de C no conoce los pánicos de Rust.
+/// DEBEMOS capturarlo.
 ///
-/// # Safety
-/// Called from C; must not unwind.
+/// # Seguridad
+/// Llamado desde C; no debe desenrollar la pila.
 #[no_mangle]
 pub extern "C" fn rust_callback_safe(value: i32) -> i32 {
-    // catch_unwind converts a panic into a Result, preventing it from crossing
-    // the FFI boundary (which would be undefined behaviour).
+    // catch_unwind convierte un pánico en un Result, evitando que cruce
+    // el límite FFI (lo cual sería comportamiento indefinido).
     match panic::catch_unwind(|| {
-        // Simulate code that might panic
+        // Simular código que podría entrar en pánico
         if value < 0 {
-            panic!("negative value not allowed: {value}");
+            panic!("valor negativo no permitido: {value}");
         }
         value * 2
     }) {
         Ok(result) => result,
         Err(_) => {
-            // The panic was caught — return an error sentinel to C
+            // El pánico fue capturado — devolver un centinela de error a C
             -1
         }
     }
 }
 
-// ── C string / null pointer safety ───────────────────────────────────────────
+// ── Seguridad con cadenas C y punteros nulos ───────────────────────────────────────────
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-/// Safely converts a C string pointer to a Rust &str.
-/// Returns None if the pointer is null or the bytes aren't valid UTF-8.
+/// Convierte de forma segura un puntero de cadena C a un &str de Rust.
+/// Devuelve None si el puntero es nulo o los bytes no son UTF-8 válido.
 ///
-/// # Safety
-/// `ptr` must be null or point to a null-terminated byte string.
+/// # Seguridad
+/// `ptr` debe ser nulo o apuntar a una cadena de bytes terminada en nulo.
 unsafe fn c_str_to_rust<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
-    // SAFETY: caller guarantees ptr is valid and null-terminated
+    // SAFETY: el llamador garantiza que ptr es válido y está terminado en nulo
     let cstr = unsafe { CStr::from_ptr(ptr) };
     cstr.to_str().ok()
 }
 
 fn main() {
-    println!("=== Error handling across FFI ===\n");
+    println!("=== Manejo de errores a través de FFI ===\n");
 
-    // 1. Map C error codes to Rust Results
-    println!("C error code → Rust Result:");
+    // 1. Mapear códigos de error de C a Results de Rust
+    println!("Código de error de C → Result de Rust:");
     for code in [0, -1, -2, -99] {
         match call_c_function_safely(code) {
             Ok(()) => println!("  code={code:3} → Ok(())"),
@@ -100,25 +100,25 @@ fn main() {
         }
     }
 
-    // 2. Demonstrate panic catching at FFI boundary
-    println!("\ncatch_unwind at FFI boundary:");
+    // 2. Demostrar la captura de pánicos en el límite FFI
+    println!("\ncatch_unwind en el límite FFI:");
     for value in [5, -3, 10] {
         let result = rust_callback_safe(value);
         println!("  rust_callback_safe({value:3}) → {result}");
     }
-    println!("  (negative values cause a panic internally, but it's caught — no UB)");
+    println!("  (los valores negativos causan un pánico internamente, pero es capturado — sin UB)");
 
-    // 3. Null pointer safety
-    println!("\nC string safety:");
+    // 3. Seguridad con punteros nulos
+    println!("\nSeguridad con cadenas C:");
     let valid = c"Hello from C";
     let result = unsafe { c_str_to_rust(valid.as_ptr()) };
-    println!("  valid C string:    {:?}", result);
+    println!("  cadena C válida:    {:?}", result);
     let result = unsafe { c_str_to_rust(std::ptr::null()) };
-    println!("  null pointer:      {:?}", result);
+    println!("  puntero nulo:       {:?}", result);
 
-    println!("\nKey rules:");
-    println!("  1. C returns i32 error codes → map to Rust Result<T, E>");
-    println!("  2. extern \"C\" functions → NEVER let panics propagate (UB)");
-    println!("  3. Use std::panic::catch_unwind in callbacks called from C");
-    println!("  4. Always check for null before dereferencing C pointers");
+    println!("\nReglas clave:");
+    println!("  1. C devuelve códigos de error i32 → mapear a Result<T, E> de Rust");
+    println!("  2. Funciones extern \"C\" → NUNCA dejar que los pánicos se propaguen (UB)");
+    println!("  3. Usar std::panic::catch_unwind en callbacks llamados desde C");
+    println!("  4. Siempre verificar si hay nulo antes de desreferenciar punteros de C");
 }

@@ -1,37 +1,37 @@
-//! Example 02 — Async UART/Serial I/O with tokio-serial
+//! Ejemplo 02 — I/O UART/Serie Asíncrono con tokio-serial
 //!
-//! You already know UART from the hardware side (baud rate, parity, stop bits,
-//! flow control).  This example shows how to configure and use a serial port
-//! from Linux userspace with async Rust.
+//! Ya conoces UART del lado del hardware (velocidad de baudios, paridad, bits de parada,
+//! control de flujo). Este ejemplo muestra cómo configurar y usar un puerto serie
+//! desde el espacio de usuario de Linux con async Rust.
 //!
-//! The key is that tokio-serial wraps the file descriptor in tokio's async I/O
-//! infrastructure (epoll on Linux), so .read()/.write() yield to the runtime
-//! instead of blocking an OS thread.
+//! La clave es que tokio-serial envuelve el descriptor de archivo en la infraestructura
+//! de I/O asíncrono de tokio (epoll en Linux), por lo que .read()/.write() ceden al runtime
+//! en lugar de bloquear un hilo del SO.
 //!
-//! NOTE: Requires a real or virtual serial port.
-//! Create a virtual pair with: socat -d -d pty,raw,echo=0 pty,raw,echo=0
-//! Then use one of the reported /dev/pts/N paths as PORT_PATH.
+//! NOTA: Requiere un puerto serie real o virtual.
+//! Crea un par virtual con: socat -d -d pty,raw,echo=0 pty,raw,echo=0
+//! Luego usa una de las rutas /dev/pts/N reportadas como PORT_PATH.
 //!
-//! Run with:  cargo run --example 02_tty_serial
+//! Ejecutar con:  cargo run --example 02_tty_serial
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, StopBits};
 
-/// Change this to your actual serial port
+/// Cambia esto a tu puerto serie real
 const PORT_PATH: &str = "/dev/ttyUSB0";
 const BAUD_RATE: u32 = 115200;
 
 #[tokio::main]
 async fn main() {
-    println!("=== Async Serial I/O ===\n");
-    println!("Port:      {PORT_PATH}");
-    println!("Baud rate: {BAUD_RATE}");
-    println!("Format:    8N1 (8 data bits, no parity, 1 stop bit)");
+    println!("=== I/O Serie Asíncrono ===\n");
+    println!("Puerto:          {PORT_PATH}");
+    println!("Velocidad baud:  {BAUD_RATE}");
+    println!("Formato:         8N1 (8 bits de datos, sin paridad, 1 bit de parada)");
     println!();
 
-    // Configure the serial port.
-    // This mirrors what you'd do in HAL_UART_Init on an STM32 — but from
-    // the Linux side of the wire.
+    // Configurar el puerto serie.
+    // Esto refleja lo que harías en HAL_UART_Init en un STM32 — pero desde
+    // el lado Linux del cable.
     let port = tokio_serial::new(PORT_PATH, BAUD_RATE)
         .data_bits(DataBits::Eight)
         .parity(Parity::None)
@@ -42,37 +42,37 @@ async fn main() {
     let mut port = match port {
         Ok(p) => p,
         Err(e) => {
-            println!("Cannot open {PORT_PATH}: {e}");
+            println!("No se puede abrir {PORT_PATH}: {e}");
             println!();
-            println!("Serial port configuration options:");
-            println!("  Data bits:    tokio_serial::DataBits::{{Five,Six,Seven,Eight}}");
-            println!("  Parity:       tokio_serial::Parity::{{None,Odd,Even}}");
-            println!("  Stop bits:    tokio_serial::StopBits::{{One,Two}}");
-            println!("  Flow control: tokio_serial::FlowControl::{{None,Software,Hardware}}");
+            println!("Opciones de configuración del puerto serie:");
+            println!("  Bits de datos:    tokio_serial::DataBits::{{Five,Six,Seven,Eight}}");
+            println!("  Paridad:          tokio_serial::Parity::{{None,Odd,Even}}");
+            println!("  Bits de parada:   tokio_serial::StopBits::{{One,Two}}");
+            println!("  Control de flujo: tokio_serial::FlowControl::{{None,Software,Hardware}}");
             println!();
-            println!("For testing without hardware, create a virtual pair:");
+            println!("Para probar sin hardware, crea un par virtual:");
             println!("  socat -d -d pty,raw,echo=0 pty,raw,echo=0");
-            println!("Then update PORT_PATH to one of the reported /dev/pts/N paths.");
+            println!("Luego actualiza PORT_PATH a una de las rutas /dev/pts/N reportadas.");
             return;
         }
     };
 
-    // Send a greeting
-    port.write_all(b"Hello from Rust daemon!\n").await.expect("write");
-    println!("Sent: 'Hello from Rust daemon!'");
+    // Enviar un saludo
+    port.write_all(b"Hello from Rust daemon!\n").await.expect("escritura");
+    println!("Enviado: 'Hello from Rust daemon!'");
 
-    // Read response lines using a BufReader for line-by-line framing.
-    // In practice you'd use a custom codec (see LengthDelimitedCodec in day4)
-    // for binary protocols, but lines work well for ASCII debug channels.
+    // Leer líneas de respuesta usando un BufReader para entramar línea a línea.
+    // En la práctica usarías un codec personalizado (ver LengthDelimitedCodec en el día 4)
+    // para protocolos binarios, pero las líneas funcionan bien para canales de depuración ASCII.
     let reader = BufReader::new(port);
     let mut lines = reader.lines();
 
-    println!("Waiting for responses (Ctrl+C to stop)...");
+    println!("Esperando respuestas (Ctrl+C para detener)...");
     loop {
         match lines.next_line().await {
-            Ok(Some(line)) => println!("Received: '{line}'"),
-            Ok(None)       => { println!("Port closed."); break; }
-            Err(e)         => { println!("Read error: {e}"); break; }
+            Ok(Some(line)) => println!("Recibido: '{line}'"),
+            Ok(None)       => { println!("Puerto cerrado."); break; }
+            Err(e)         => { println!("Error de lectura: {e}"); break; }
         }
     }
 }

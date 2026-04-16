@@ -1,21 +1,21 @@
-//! Example 04 — Sequence counter management
+//! Ejemplo 04 — Gestión del contador de secuencia
 //!
-//! Every CCSDS packet carries a 14-bit sequence count (0–0x3FFF per APID).
-//! The ground checks these to detect lost packets, duplicate packets, or
-//! replay attacks.
+//! Cada paquete CCSDS lleva un contador de secuencia de 14 bits (0–0x3FFF por APID).
+//! El segmento terrestre los verifica para detectar paquetes perdidos, duplicados o
+//! ataques de repetición.
 //!
-//! Key rules:
-//!   - Each APID has its OWN independent counter
-//!   - The counter increments with every packet
-//!   - It wraps 0x3FFF → 0x0000 (not 0xFFFF)
-//!   - A gap means packets were lost
+//! Reglas clave:
+//!   - Cada APID tiene su PROPIO contador independiente
+//!   - El contador se incrementa con cada paquete
+//!   - Hace wrap en 0x3FFF → 0x0000 (no en 0xFFFF)
+//!   - Un salto indica que se perdieron paquetes
 //!
-//! Run with:  cargo run --example 04_sequence_counter
+//! Ejecutar con:  cargo run --example 04_sequence_counter
 
 use spacepacket::primary_header::CcsdsPrimaryHeader;
 use std::collections::HashMap;
 
-/// Per-APID sequence counter tracker (spacecraft side — for transmitting).
+/// Rastreador del contador de secuencia por APID (lado nave — para transmitir).
 struct SeqCounters {
     counters: HashMap<u16, u16>,
 }
@@ -23,7 +23,7 @@ struct SeqCounters {
 impl SeqCounters {
     fn new() -> Self { Self { counters: HashMap::new() } }
 
-    /// Returns the NEXT sequence count for this APID, then increments.
+    /// Devuelve el PRÓXIMO contador de secuencia para este APID y luego lo incrementa.
     fn next(&mut self, apid: u16) -> u16 {
         let counter = self.counters.entry(apid).or_insert(0);
         let value = *counter;
@@ -32,7 +32,7 @@ impl SeqCounters {
     }
 }
 
-/// Ground-side gap detector.
+/// Detector de saltos en el segmento terrestre.
 struct GapDetector {
     expected: HashMap<u16, u16>,
     gaps_found: u32,
@@ -44,14 +44,14 @@ impl GapDetector {
     fn check(&mut self, apid: u16, seq: u16) {
         let expected = self.expected.entry(apid).or_insert(seq);
         if seq != *expected {
-            // Calculate how many packets were lost, accounting for wrap-around
+            // Calcular cuántos paquetes se perdieron, teniendo en cuenta el wrap-around
             let lost = if seq > *expected {
                 seq - *expected
             } else {
-                (0x4000 - *expected) + seq  // wrap-around case
+                (0x4000 - *expected) + seq  // caso de wrap-around
             };
             println!(
-                "  [GAP DETECTED] APID 0x{apid:03X}: expected seq={expected}, got seq={seq} — {} packet(s) lost",
+                "  [SALTO DETECTADO] APID 0x{apid:03X}: se esperaba seq={expected}, se recibió seq={seq} — {} paquete(s) perdido(s)",
                 lost
             );
             self.gaps_found += 1;
@@ -61,46 +61,46 @@ impl GapDetector {
 }
 
 fn main() {
-    println!("=== Sequence Counter Demo ===\n");
+    println!("=== Demo de Contador de Secuencia ===\n");
 
     let mut counters = SeqCounters::new();
     let mut detector = GapDetector::new();
 
-    // Simulate normal transmission for APID 0x100
-    println!("--- Normal packet stream (APID 0x100) ---");
+    // Simular transmisión normal para APID 0x100
+    println!("--- Flujo de paquetes normal (APID 0x100) ---");
     for _ in 0..5 {
         let seq = counters.next(0x100);
-        println!("  Sending APID=0x100 seq={seq}");
+        println!("  Enviando APID=0x100 seq={seq}");
         detector.check(0x100, seq);
     }
 
-    // Simulate a gap (packet 5 and 6 are lost, only 7 arrives)
-    println!("\n--- Simulating 2 lost packets ---");
+    // Simular un salto (los paquetes 5 y 6 se pierden, solo llega el 7)
+    println!("\n--- Simulando 2 paquetes perdidos ---");
     let seq = counters.next(0x100);
-    println!("  Packet seq={seq} 'lost in transmission'");
-    counters.next(0x100); // also lost
+    println!("  Paquete seq={seq} 'perdido en transmisión'");
+    counters.next(0x100); // también perdido
     let seq_after_gap = counters.next(0x100);
-    println!("  Sending APID=0x100 seq={seq_after_gap} (ground sees gap)");
+    println!("  Enviando APID=0x100 seq={seq_after_gap} (el segmento terrestre detecta el salto)");
     detector.check(0x100, seq_after_gap);
 
-    // Independent counters per APID
-    println!("\n--- Independent counters (APID 0x200 starts fresh) ---");
+    // Contadores independientes por APID
+    println!("\n--- Contadores independientes (APID 0x200 empieza desde cero) ---");
     for i in 0..3 {
         let seq_100 = counters.next(0x100);
         let seq_200 = counters.next(0x200);
-        println!("  0x100 seq={seq_100}, 0x200 seq={seq_200} (iteration {i})");
+        println!("  0x100 seq={seq_100}, 0x200 seq={seq_200} (iteración {i})");
         detector.check(0x100, seq_100);
         detector.check(0x200, seq_200);
     }
 
-    // Demonstrate the 14-bit wrap-around
-    println!("\n--- 14-bit wrap-around at 0x3FFF ---");
+    // Demostrar el wrap-around de 14 bits
+    println!("\n--- Wrap-around de 14 bits en 0x3FFF ---");
     let mut wrap_counter: u16 = 0x3FFD;
     for _ in 0..5 {
         println!("  seq = 0x{wrap_counter:04X} ({wrap_counter})");
         wrap_counter = CcsdsPrimaryHeader::next_seq(wrap_counter);
     }
 
-    println!("\n--- Summary ---");
-    println!("Gaps detected: {}", detector.gaps_found);
+    println!("\n--- Resumen ---");
+    println!("Saltos detectados: {}", detector.gaps_found);
 }

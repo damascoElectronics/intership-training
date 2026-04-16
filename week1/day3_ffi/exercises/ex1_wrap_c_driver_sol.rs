@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution
+//! Ejercicio 1 — Solución
 
 #![allow(dead_code)]
 
@@ -29,11 +29,11 @@ mod ffi {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AdcError {
-    #[error("failed to open ADC device: {path}")]
+    #[error("falló al abrir el dispositivo ADC: {path}")]
     OpenFailed { path: String },
-    #[error("read failed")]
+    #[error("lectura fallida")]
     ReadFailed,
-    #[error("invalid device path: {0}")]
+    #[error("ruta de dispositivo inválida: {0}")]
     NullByte(#[from] std::ffi::NulError),
 }
 
@@ -44,7 +44,7 @@ pub struct AdcHandle {
 
 impl AdcHandle {
     pub fn open(path: &str) -> Result<Self, AdcError> {
-        let cpath = CString::new(path)?; // propagates NulError
+        let cpath = CString::new(path)?; // propaga NulError
         let fd = unsafe { ffi::adc_open(cpath.as_ptr()) };
         if fd < 0 {
             return Err(AdcError::OpenFailed { path: path.to_owned() });
@@ -62,8 +62,8 @@ impl AdcHandle {
 
 impl Drop for AdcHandle {
     fn drop(&mut self) {
-        // SAFETY: self.handle is a valid handle obtained from adc_open.
-        // We call this exactly once (in Drop), so no double-close.
+        // SAFETY: self.handle es un handle válido obtenido de adc_open.
+        // Lo llamamos exactamente una vez (en Drop), por lo que no hay doble cierre.
         unsafe { ffi::adc_close(self.handle); }
     }
 }
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn open_valid_device() {
-        let handle = AdcHandle::open("/dev/adc0").expect("should open");
+        let handle = AdcHandle::open("/dev/adc0").expect("debería abrirse");
         assert_eq!(handle.read().unwrap(), 2048);
     }
 
@@ -86,10 +86,10 @@ mod tests {
     #[test]
     fn raii_drop_closes_handle() {
         { let _h = AdcHandle::open("/dev/adc0").unwrap(); }
-        let _h2 = AdcHandle::open("/dev/adc0").expect("reopen after drop");
+        let _h2 = AdcHandle::open("/dev/adc0").expect("reabrir después del drop");
     }
 }
 
 fn main() {
-    println!("Run tests with: cargo test --example ex1_wrap_c_driver_sol");
+    println!("Ejecutar pruebas con: cargo test --example ex1_wrap_c_driver_sol");
 }

@@ -1,39 +1,39 @@
-//! # spacepacket — CCSDS Space Packet Protocol + PUS-C TC/TM
+//! # spacepacket — Protocolo de Paquetes Espaciales CCSDS + PUS-C TC/TM
 //!
-//! Implements key structures from:
-//! - **CCSDS 133.0-B-2** — Space Packet Protocol (primary header)
-//! - **ECSS-E-ST-70-41C** — Packet Utilization Standard (PUS-C TC/TM)
+//! Implementa estructuras clave de:
+//! - **CCSDS 133.0-B-2** — Protocolo de Paquetes Espaciales (cabecera primaria)
+//! - **ECSS-E-ST-70-41C** — Estándar de Utilización de Paquetes (PUS-C TC/TM)
 //!
-//! ## Packet structure (CCSDS primary header, 6 octets)
+//! ## Estructura del paquete (cabecera primaria CCSDS, 6 octetos)
 //!
 //! ```text
-//! Octet  0        1        2        3        4        5
+//! Octeto 0        1        2        3        4        5
 //!       ┌────────┬────────┬────────┬────────┬────────┬────────┐
 //!       │VVV T S │AAAAAAAA│FF SSSSSS│SSSSSSSS│LLLLLLLL│LLLLLLLL│
 //!       └────────┴────────┴────────┴────────┴────────┴────────┘
 //!
-//! V = Version (3 bits, always 0b000)
-//! T = Type: 0=TM, 1=TC
-//! S = Secondary Header Flag (1=present)
+//! V = Versión (3 bits, siempre 0b000)
+//! T = Tipo: 0=TM, 1=TC
+//! S = Flag de Cabecera Secundaria (1=presente)
 //! A = APID (11 bits, 0x000–0x7FE; 0x7FF = idle)
-//! F = Sequence Flags (2 bits: 11=standalone, 01=first, 10=last, 00=continuation)
-//! S = Sequence Count (14 bits, wraps 0–0x3FFF)
-//! L = Data Length (16 bits, value = packet_data_field_octets − 1)
+//! F = Flags de Secuencia (2 bits: 11=autónomo, 01=primero, 10=último, 00=continuación)
+//! S = Contador de Secuencia (14 bits, wrap 0–0x3FFF)
+//! L = Longitud de Datos (16 bits, valor = octetos_del_campo_de_datos − 1)
 //! ```
 //!
-//! ## PUS-C packet structure (on top of primary header)
+//! ## Estructura del paquete PUS-C (sobre la cabecera primaria)
 //!
 //! ```text
 //! ┌──────────────────┬─────────────────────────────────┬──────────┐
-//! │ Primary Header   │ PUS Secondary Header             │ PEC      │
-//! │ (6 B, CCSDS)     │ (variable, see below)            │ CRC 2 B  │
+//! │ Cabecera Primaria│ Cabecera Secundaria PUS          │ PEC      │
+//! │ (6 B, CCSDS)     │ (variable, ver abajo)            │ CRC 2 B  │
 //! └──────────────────┴─────────────────────────────────┴──────────┘
 //!
-//! PUS-C TC secondary header (5 B):
-//!   [PUS version(4b) + spare(4b)] [Service] [Subservice] [Source ID (2B)]
+//! Cabecera secundaria PUS-C TC (5 B):
+//!   [versión PUS(4b) + spare(4b)] [Servicio] [Subservicio] [ID Origen (2B)]
 //!
-//! PUS-C TM secondary header (10 B):
-//!   [PUS version(4b) + spare(4b)] [Service] [Subservice] [Dest ID (2B)] [OBT (4+2B)]
+//! Cabecera secundaria PUS-C TM (10 B):
+//!   [versión PUS(4b) + spare(4b)] [Servicio] [Subservicio] [ID Destino (2B)] [OBT (4+2B)]
 //! ```
 
 pub mod apid_router;

@@ -1,8 +1,8 @@
-//! Exercise 1 — Solution (fixed codec + tests that found the bug)
+//! Ejercicio 1 — Solución (codec corregido + pruebas que encontraron el error)
 
 use proptest::prelude::*;
 
-// ── Fixed COBS implementation ──────────────────────────────────────────────────
+// ── Implementación COBS corregida ──────────────────────────────────────────────────
 
 pub fn cobs_encode(data: &[u8]) -> Vec<u8> {
     let mut output = Vec::with_capacity(data.len() + data.len() / 254 + 2);
@@ -21,7 +21,7 @@ pub fn cobs_encode(data: &[u8]) -> Vec<u8> {
             if code == 0xFF {
                 output[code_pos] = code;
                 code_pos = output.len();
-                output.push(0x01); // FIX: this was missing in the buggy version
+                output.push(0x01); // CORRECCIÓN: esto faltaba en la versión con error
                 code = 1;
             }
         }
@@ -51,7 +51,7 @@ proptest! {
     #[test]
     fn roundtrip(data: Vec<u8>) {
         let encoded = cobs_encode(&data);
-        let decoded = cobs_decode(&encoded).expect("decode should succeed");
+        let decoded = cobs_decode(&encoded).expect("la decodificación debe tener éxito");
         prop_assert_eq!(decoded, data);
     }
 
@@ -62,10 +62,10 @@ proptest! {
     }
 }
 
-// ── Regression test: exact 254-byte non-zero run ──────────────────────────────
+// ── Prueba de regresión: secuencia de exactamente 254 bytes no nulos ──────────────────────────────
 #[test]
 fn regression_254_byte_run() {
-    let data: Vec<u8> = (1u8..=254).collect(); // 254 non-zero bytes
+    let data: Vec<u8> = (1u8..=254).collect(); // 254 bytes no nulos
     let encoded = cobs_encode(&data);
     assert!(!encoded.contains(&0u8));
     let decoded = cobs_decode(&encoded).unwrap();
@@ -73,7 +73,7 @@ fn regression_254_byte_run() {
 }
 
 fn main() {
-    println!("The bug: when a run of exactly 254 non-zero bytes is encoded,");
-    println!("the next code byte placeholder was not pushed.");
-    println!("proptest found this by generating [1..254] as a shrunken input.");
+    println!("El error: cuando se codifica una secuencia de exactamente 254 bytes no nulos,");
+    println!("no se insertaba el marcador de posición del siguiente byte de código.");
+    println!("proptest lo encontró generando [1..254] como entrada reducida.");
 }

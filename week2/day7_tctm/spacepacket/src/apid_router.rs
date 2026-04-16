@@ -1,14 +1,14 @@
-//! APID-based packet router.
+//! Enrutador de paquetes basado en APID.
 //!
-//! Routes raw packet bytes to the appropriate handler channel based on the
-//! 11-bit APID in the CCSDS primary header.  Unroutable packets go to an
-//! optional default sink, or are returned as [`PacketError::NoRoute`].
+//! Enruta bytes de paquetes en bruto al canal manejador apropiado basándose en el
+//! APID de 11 bits de la cabecera primaria CCSDS. Los paquetes no enrutables van a
+//! un sumidero predeterminado opcional, o se devuelven como [`PacketError::NoRoute`].
 
 use std::collections::HashMap;
 use crate::error::PacketError;
 use crate::primary_header::CcsdsPrimaryHeader;
 
-/// Routes Space Packets to handler channels by APID.
+/// Enruta Paquetes Espaciales a canales manejadores por APID.
 pub struct ApidRouter<T = Vec<u8>> {
     routes: HashMap<u16, std::sync::mpsc::SyncSender<T>>,
 }
@@ -18,21 +18,21 @@ impl ApidRouter {
         Self { routes: HashMap::new() }
     }
 
-    /// Register a channel sender for the given APID.
+    /// Registra un emisor de canal para el APID dado.
     ///
-    /// If a route already exists for `apid` it is replaced.
+    /// Si ya existe una ruta para `apid`, se reemplaza.
     pub fn register(&mut self, apid: u16, tx: std::sync::mpsc::SyncSender<Vec<u8>>) {
         self.routes.insert(apid, tx);
     }
 
-    /// Route `packet_bytes` to the channel registered for its APID.
+    /// Enruta `packet_bytes` al canal registrado para su APID.
     ///
-    /// Parses only the 6-byte primary header to extract the APID; the full
-    /// byte slice is forwarded unchanged.
+    /// Parsea únicamente la cabecera primaria de 6 bytes para extraer el APID;
+    /// la porción completa de bytes se reenvía sin modificaciones.
     ///
-    /// # Errors
-    /// Returns [`PacketError::BufferTooShort`] if fewer than 6 bytes.
-    /// Returns [`PacketError::NoRoute`] if no route is registered for the APID.
+    /// # Errores
+    /// Devuelve [`PacketError::BufferTooShort`] si hay menos de 6 bytes.
+    /// Devuelve [`PacketError::NoRoute`] si no hay ruta registrada para el APID.
     pub fn route(&self, packet_bytes: Vec<u8>) -> Result<(), PacketError> {
         if packet_bytes.len() < 6 {
             return Err(PacketError::BufferTooShort { need: 6, got: packet_bytes.len() });
@@ -42,7 +42,7 @@ impl ApidRouter {
         let apid = hdr.apid();
         match self.routes.get(&apid) {
             Some(tx) => {
-                // SyncSender::try_send won't block; if channel is full the packet is dropped.
+                // SyncSender::try_send no bloquea; si el canal está lleno, el paquete se descarta.
                 let _ = tx.try_send(packet_bytes);
                 Ok(())
             }

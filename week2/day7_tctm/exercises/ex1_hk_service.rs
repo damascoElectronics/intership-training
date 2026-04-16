@@ -1,30 +1,31 @@
-//! Exercise 1 — Implement a PUS Service 3 Housekeeping Report Generator
+//! Ejercicio 1 — Implementar un Generador de Informes de Housekeeping PUS Servicio 3
 //!
-//! PUS Service 3 is one of the most important services on an OBC.  It allows
-//! the ground to request snapshots of spacecraft parameters (temperatures,
-//! voltages, modes) packed into TM(3,25) packets.
+//! PUS Servicio 3 es uno de los servicios más importantes en un OBC. Permite que
+//! el segmento terrestre solicite instantáneas de los parámetros de la nave
+//! (temperaturas, voltajes, modos) empaquetados en paquetes TM(3,25).
 //!
-//! ## Your task
+//! ## Tu tarea
 //!
-//! Fill in every `todo!()` block below.  When all tests pass, you're done.
+//! Rellena cada bloque `todo!()` que aparece a continuación. Cuando todas las pruebas
+//! pasen, habrás terminado.
 //!
-//! Run tests with:  cargo test --example ex1_hk_service
+//! Ejecutar pruebas con:  cargo test --example ex1_hk_service
 
 #![allow(dead_code, unused_variables)]
 
 use spacepacket::PusTelemetry;
 
-// ─── Pre-written supporting types ────────────────────────────────────────────
+// ─── Tipos de apoyo ya escritos ───────────────────────────────────────────────
 
-/// Identifies a single spacecraft parameter.
+/// Identifica un único parámetro de la nave espacial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HkParameterId {
-    TemperatureMc,   // millidegrees Celsius (i16)
-    BusVoltageMv,    // millivolts (u16)
-    ModeFlags,       // bit field (u16)
+    TemperatureMc,   // miligrados Celsius (i16)
+    BusVoltageMv,    // milivoltios (u16)
+    ModeFlags,       // campo de bits (u16)
 }
 
-/// A sampled parameter value.
+/// Un valor de parámetro muestreado.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HkParameterValue {
     Int16(i16),
@@ -32,7 +33,7 @@ pub enum HkParameterValue {
 }
 
 impl HkParameterValue {
-    /// Serialises the value to big-endian bytes.
+    /// Serializa el valor a bytes big-endian.
     pub fn to_bytes(self) -> [u8; 2] {
         match self {
             Self::Int16(v)  => v.to_be_bytes(),
@@ -41,55 +42,55 @@ impl HkParameterValue {
     }
 }
 
-// ─── Your implementation ─────────────────────────────────────────────────────
+// ─── Tu implementación ────────────────────────────────────────────────────────
 
-/// Generates PUS Service 3 housekeeping reports.
+/// Genera informes de housekeeping PUS Servicio 3.
 pub struct HkService {
     apid: u16,
     seq_count: u16,
-    /// Registered parameters: (id, current_value)
+    /// Parámetros registrados: (id, valor_actual)
     parameters: Vec<(HkParameterId, HkParameterValue)>,
 }
 
 impl HkService {
-    /// Creates a new `HkService` for the given APID.
+    /// Crea un nuevo `HkService` para el APID dado.
     pub fn new(apid: u16) -> Self {
         Self { apid, seq_count: 0, parameters: Vec::new() }
     }
 
-    /// Registers a parameter with its initial value.
+    /// Registra un parámetro con su valor inicial.
     ///
-    /// If the parameter is already registered, its value is updated.
+    /// Si el parámetro ya está registrado, se actualiza su valor.
     pub fn register_parameter(&mut self, id: HkParameterId, value: HkParameterValue) {
-        todo!("find existing entry and update, or push a new (id, value) pair")
+        todo!("buscar entrada existente y actualizar, o insertar un nuevo par (id, value)")
     }
 
-    /// Updates the stored value for a registered parameter.
+    /// Actualiza el valor almacenado para un parámetro registrado.
     ///
-    /// Returns `false` if the parameter was not registered.
+    /// Devuelve `false` si el parámetro no estaba registrado.
     pub fn update_parameter(&mut self, id: HkParameterId, value: HkParameterValue) -> bool {
-        todo!("find the entry by id, update its value, return true; return false if not found")
+        todo!("buscar la entrada por id, actualizar su valor, devolver true; devolver false si no se encuentra")
     }
 
-    /// Builds a TM(3,25) HK Parameter Report containing all registered parameters.
+    /// Construye un informe TM(3,25) HK que contiene todos los parámetros registrados.
     ///
-    /// The app_data format is:
+    /// El formato de app_data es:
     ///   [parameter_count: u8] [id: u8, value: 2B] × parameter_count
     ///
-    /// The sequence count is incremented after each call.
+    /// El contador de secuencia se incrementa tras cada llamada.
     pub fn build_report(&mut self) -> Result<PusTelemetry, spacepacket::PacketError> {
         todo!("
-            1. Build app_data:
-               - first byte: number of parameters (as u8)
-               - then for each (id, value): push id as u8, push value.to_bytes()
-            2. Call PusTelemetry::new(self.apid, self.seq_count, 3, 25, 0, obt_ms, app_data)
-            3. Increment self.seq_count (using CcsdsPrimaryHeader::next_seq to wrap at 14 bits)
-            4. Return the TM
+            1. Construir app_data:
+               - primer byte: número de parámetros (como u8)
+               - luego por cada (id, value): insertar id como u8, insertar value.to_bytes()
+            2. Llamar PusTelemetry::new(self.apid, self.seq_count, 3, 25, 0, obt_ms, app_data)
+            3. Incrementar self.seq_count (usando CcsdsPrimaryHeader::next_seq para hacer wrap en 14 bits)
+            4. Devolver el TM
         ")
     }
 }
 
-// ─── Tests (these must pass) ─────────────────────────────────────────────────
+// ─── Pruebas (deben pasar) ────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -106,9 +107,9 @@ mod tests {
         assert_eq!(tm.service(), 3);
         assert_eq!(tm.subservice(), 25);
         assert_eq!(tm.apid(), 0x300);
-        // app_data: 1 byte count + 3 × 3 bytes = 10 bytes
-        assert_eq!(tm.app_data().len(), 10, "app_data should be 10 bytes");
-        assert_eq!(tm.app_data()[0], 3, "first byte should be parameter count");
+        // app_data: 1 byte de conteo + 3 × 3 bytes = 10 bytes
+        assert_eq!(tm.app_data().len(), 10, "app_data debe tener 10 bytes");
+        assert_eq!(tm.app_data()[0], 3, "el primer byte debe ser el conteo de parámetros");
     }
 
     #[test]
@@ -127,7 +128,7 @@ mod tests {
         let updated = svc.update_parameter(HkParameterId::TemperatureMc, HkParameterValue::Int16(25_000));
         assert!(updated);
         let tm = svc.build_report().unwrap();
-        // Temperature is the first (and only) parameter; id at offset 1, value at 2-3
+        // La temperatura es el primer (y único) parámetro; id en offset 1, valor en 2-3
         let val = i16::from_be_bytes([tm.app_data()[2], tm.app_data()[3]]);
         assert_eq!(val, 25_000);
     }
@@ -140,5 +141,5 @@ mod tests {
 }
 
 fn main() {
-    println!("Run tests with: cargo test --example ex1_hk_service");
+    println!("Ejecutar pruebas con: cargo test --example ex1_hk_service");
 }

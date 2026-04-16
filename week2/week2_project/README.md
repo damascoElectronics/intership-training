@@ -1,54 +1,54 @@
-# Week 2 Project — OBC Software Stack
+# Proyecto Semana 2 — Pila de Software OBC
 
-**Capstone for Week 2.** A realistic on-board computer (OBC) software stack modelling the
-architecture of a flight software system: five communicating processes, CCSDS/PUS-C packet
-handling, HMAC authentication, replay protection, housekeeping service, FDIR, and a ground
-simulator test harness.
+**Capstone de la Semana 2.** Una pila de software de computadora de a bordo (OBC) realista que modela la
+arquitectura de un sistema de software de vuelo: cinco procesos en comunicación, manejo de paquetes CCSDS/PUS-C,
+autenticación HMAC, protección contra repetición, servicio de housekeeping, FDIR y un arnés de prueba
+simulador terrestre.
 
 ---
 
-## Architecture
+## Arquitectura
 
 ```
                     ┌─────────────┐
-                    │  ground-sim │  (test harness — sends TCs, reads TMs)
+                    │  ground-sim │  (arnés de prueba — envía TCs, lee TMs)
                     └──────┬──────┘
                            │ UDS /tmp/obc_tc_uplink.sock
-                           │ HMAC-signed CCSDS TC packets
+                           │ Paquetes TC CCSDS firmados con HMAC
                            ▼
                     ┌─────────────┐
-                    │ tc-receiver │  verifies HMAC, checks replay window, forwards to router
+                    │ tc-receiver │  verifica HMAC, comprueba ventana de repetición, reenvía al router
                     └──────┬──────┘
                            │ UDS /tmp/obc_router.sock
-                           │ raw verified TC bytes (length-prefixed)
+                           │ bytes TC verificados en bruto (con prefijo de longitud)
                            ▼
                     ┌─────────────┐
-                    │  obc-router │  routes by PUS service number
+                    │  obc-router │  enruta por número de servicio PUS
                     └──────┬──────┘
                  ┌─────────┴──────────┐
-                 │ svc=17 (ping)      │ svc=3 (HK)        svc=* (sensors)
-                 │ responds inline    ▼                    ▼
+                 │ svc=17 (ping)      │ svc=3 (HK)        svc=* (sensores)
+                 │ responde en línea  ▼                    ▼
                  │          ┌──────────────┐    ┌───────────────────┐
                  │          │  hk-service  │    │  sensor-daemon    │
-                 │          │  /proc stats │    │  FDIR state mach. │
+                 │          │  stats /proc │    │  máquina FDIR     │
                  │          └──────────────┘    └───────────────────┘
                  │
-                 └── TM responses flow back over separate UDS sockets
+                 └── Las respuestas TM regresan por sockets UDS separados
 ```
 
 ---
 
-## Running the Stack
+## Ejecución de la Pila
 
-**Option A — convenience script (recommended):**
+**Opción A — script de conveniencia (recomendado):**
 ```bash
 bash tools/run_obc_stack.sh
 ```
 
-The script builds the workspace, starts all daemons in the background, runs `ground-sim`,
-and cleans up on Ctrl+C.
+El script compila el workspace, inicia todos los daemons en segundo plano, ejecuta `ground-sim`,
+y limpia al pulsar Ctrl+C.
 
-**Option B — manual (four terminals):**
+**Opción B — manual (cuatro terminales):**
 ```bash
 # Terminal 1
 cargo run -p tc-receiver
@@ -62,71 +62,71 @@ cargo run -p hk-service
 # Terminal 4
 cargo run -p sensor-daemon
 
-# Terminal 5 (test harness)
+# Terminal 5 (arnés de prueba)
 cargo run -p ground-sim
 ```
 
 ---
 
-## Expected ground-sim Output
+## Salida Esperada de ground-sim
 
 ```
 [TEST 1] TC(17,1) ping...
-  → Sent 20 bytes
-  ← Received TM(17,2) pong    PASS
+  → Enviados 20 bytes
+  ← Recibido TM(17,2) pong    PASS
 
-[TEST 2] TC(3,129) HK request...
-  → Sent 20 bytes
-  ← Received TM(3,25) HK report (N bytes)    PASS
+[TEST 2] TC(3,129) solicitud HK...
+  → Enviados 20 bytes
+  ← Recibido TM(3,25) informe HK (N bytes)    PASS
 
-[TEST 3] Bad HMAC rejection...
-  → Sent corrupted TC
-  ← Connection closed / no response    PASS
+[TEST 3] Rechazo de HMAC incorrecto...
+  → TC corrupto enviado
+  ← Conexión cerrada / sin respuesta    PASS
 
-[TEST 4] Replay attack rejection...
-  → Replayed TC(17,1) seq=1
-  ← Rejected (duplicate sequence)    PASS
+[TEST 4] Rechazo de ataque de repetición...
+  → TC(17,1) reproducido seq=1
+  ← Rechazado (secuencia duplicada)    PASS
 
 ==========================================
-Tests passed: 4 / 4
+Pruebas pasadas: 4 / 4
 ```
 
 ---
 
-## Crate Map
+## Mapa de Crates
 
-| Crate | Role |
-|-------|------|
-| `obc_core` | Shared types: `SpacePacket`, `PusService`, `HealthState`, `IpcMessage`, `OBCError` |
-| `tc_receiver` | HMAC-SHA256 verification, sliding-window replay protection, TC forwarding |
-| `obc_router` | APID/service routing, TC(17,1) inline pong |
-| `hk_service` | Reads `/proc/uptime` + `/proc/self/status`, produces TM(3,25) |
-| `sensor_daemon` | Synthetic sensor, FDIR (3 consecutive faults → Degraded) |
-| `ground_sim` | Test harness: builds signed TCs, validates TM responses, reports PASS/FAIL |
-
----
-
-## Security Properties Exercised
-
-| Property | Where implemented |
-|----------|------------------|
-| HMAC-SHA256 packet authentication | `tc_receiver` |
-| Constant-time MAC comparison | `tc_receiver` (`subtle::ConstantTimeEq`) |
-| Sliding-window replay protection | `tc_receiver` (`ReplayWindow` with `u64` bitmask) |
-| No secret bytes in logs | All crates (only packet length + APID logged, never payload) |
+| Crate | Función |
+|-------|---------|
+| `obc_core` | Tipos compartidos: `SpacePacket`, `PusService`, `HealthState`, `IpcMessage`, `OBCError` |
+| `tc_receiver` | Verificación HMAC-SHA256, protección contra repetición con ventana deslizante, reenvío de TC |
+| `obc_router` | Enrutamiento por APID/servicio, pong en línea para TC(17,1) |
+| `hk_service` | Lee `/proc/uptime` + `/proc/self/status`, produce TM(3,25) |
+| `sensor_daemon` | Sensor sintético, FDIR (3 fallos consecutivos → Degradado) |
+| `ground_sim` | Arnés de prueba: construye TCs firmados, valida respuestas TM, reporta PASS/FAIL |
 
 ---
 
-## Concepts Integrated
+## Propiedades de Seguridad Ejercidas
 
-This project exercises every topic from Week 2:
-- **Day 6** — structured rustdoc on `obc_core` public API
-- **Day 7** — CCSDS header parsing, PUS-C TC/TM construction, CRC verification
-- **Day 8** — HMAC, replay window, privilege minimisation design
-- **Day 9** — the `crc.rs` test vector property, round-trip invariant in `ground_sim`
+| Propiedad | Dónde se implementa |
+|-----------|---------------------|
+| Autenticación de paquetes HMAC-SHA256 | `tc_receiver` |
+| Comparación MAC en tiempo constante | `tc_receiver` (`subtle::ConstantTimeEq`) |
+| Protección contra repetición con ventana deslizante | `tc_receiver` (`ReplayWindow` con máscara de bits `u64`) |
+| Sin bytes secretos en los registros | Todos los crates (solo se registra longitud del paquete + APID, nunca el payload) |
 
-And carries forward Week 1 skills:
-- Async tasks with `tokio::select!` and `CancellationToken`
-- Unix socket IPC with length-prefix framing
-- FDIR state machine in `sensor_daemon`
-- `/proc` parsing in `hk_service`
+---
+
+## Conceptos Integrados
+
+Este proyecto ejercita todos los temas de la Semana 2:
+- **Día 6** — rustdoc estructurado en la API pública de `obc_core`
+- **Día 7** — análisis de cabeceras CCSDS, construcción de TC/TM PUS-C, verificación CRC
+- **Día 8** — HMAC, ventana de repetición, diseño de minimización de privilegios
+- **Día 9** — la propiedad de vector de prueba de `crc.rs`, invariante de viaje de ida y vuelta en `ground_sim`
+
+Y lleva adelante las habilidades de la Semana 1:
+- Tareas asíncronas con `tokio::select!` y `CancellationToken`
+- IPC mediante sockets Unix con enmarcado de prefijo de longitud
+- Máquina de estados FDIR en `sensor_daemon`
+- Análisis de `/proc` en `hk_service`

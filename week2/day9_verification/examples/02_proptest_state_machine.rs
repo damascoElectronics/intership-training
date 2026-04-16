@@ -1,14 +1,14 @@
-//! Example 02 — Property-based testing of a state machine
+//! Ejemplo 02 — Pruebas basadas en propiedades para una máquina de estados
 //!
-//! The FDIR health state machine from Day 5 must satisfy invariants
-//! under ANY sequence of events.  proptest generates thousands of random
-//! event sequences and checks that the invariants always hold.
+//! La máquina de estados de salud FDIR del Día 5 debe satisfacer invariantes
+//! bajo CUALQUIER secuencia de eventos. proptest genera miles de secuencias
+//! aleatorias de eventos y verifica que los invariantes siempre se cumplan.
 //!
-//! Run with:  cargo test --example 02_proptest_state_machine
+//! Ejecutar con:  cargo test --example 02_proptest_state_machine
 
 use proptest::prelude::*;
 
-// ── Health state machine ───────────────────────────────────────────────────────
+// ── Máquina de estados de salud ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HealthState {
@@ -38,20 +38,20 @@ impl HealthState {
             (Self::Failed,    HealthEvent::EscalateToSafeMode)=> Self::SafeMode,
             (Self::Failed,    HealthEvent::ManualReset)       => Self::Nominal,
             (Self::SafeMode,  HealthEvent::ManualReset)       => Self::Nominal,
-            // All other transitions are no-ops
+            // Todas las demás transiciones no tienen efecto
             (s, _) => s.clone(),
         }
     }
 
-    /// System invariant: these state combinations must never occur.
+    /// Invariante del sistema: estas combinaciones de estados nunca deben ocurrir.
     pub fn is_valid(&self) -> bool {
-        // All variants are valid; this is trivially true here, but in a real
-        // system with compound state you'd check for impossible combos.
+        // Todas las variantes son válidas; esto es trivialmente verdadero aquí, pero en un sistema
+        // real con estado compuesto se verificarían combinaciones imposibles.
         true
     }
 }
 
-// ── Proptest strategy for HealthEvent ─────────────────────────────────────────
+// ── Estrategia proptest para HealthEvent ─────────────────────────────────────────
 
 fn any_health_event() -> impl Strategy<Value = HealthEvent> {
     prop_oneof![
@@ -63,44 +63,44 @@ fn any_health_event() -> impl Strategy<Value = HealthEvent> {
     ]
 }
 
-// ── Properties ─────────────────────────────────────────────────────────────────
+// ── Propiedades ─────────────────────────────────────────────────────────────────
 
 proptest! {
-    /// After any sequence of events, the health state is always valid.
+    /// Tras cualquier secuencia de eventos, el estado de salud siempre es válido.
     #[test]
     fn state_invariants_hold(events in proptest::collection::vec(any_health_event(), 0..50)) {
         let mut state = HealthState::Nominal;
         for event in &events {
             state = state.apply(event);
-            prop_assert!(state.is_valid(), "invalid state reached: {state:?}");
+            prop_assert!(state.is_valid(), "estado inválido alcanzado: {state:?}");
         }
     }
 
-    /// A Failed state can only become Nominal via ManualReset (possibly through SafeMode).
+    /// Un estado Failed solo puede pasar a Nominal mediante ManualReset (posiblemente a través de SafeMode).
     #[test]
     fn failed_requires_manual_reset(
         pre_events in proptest::collection::vec(any_health_event(), 0..20),
         post_events in proptest::collection::vec(any_health_event(), 1..20),
     ) {
-        // Get to Failed state
+        // Llegar al estado Failed
         let mut state = HealthState::Nominal;
         for e in &pre_events { state = state.apply(e); }
 
         if state != HealthState::Failed { return Ok(()); }
 
-        // Apply post events WITHOUT ManualReset
+        // Aplicar eventos posteriores SIN ManualReset
         let no_reset: Vec<_> = post_events.iter()
             .filter(|e| !matches!(e, HealthEvent::ManualReset))
             .collect();
 
         for e in &no_reset { state = state.apply(e); }
 
-        // State should NOT be Nominal (no reset happened)
+        // El estado NO debe ser Nominal (no hubo restablecimiento)
         prop_assert_ne!(state, HealthState::Nominal,
-            "reached Nominal from Failed without ManualReset");
+            "se alcanzó Nominal desde Failed sin ManualReset");
     }
 
-    /// After ManualReset from SafeMode, system returns to Nominal.
+    /// Tras ManualReset desde SafeMode, el sistema vuelve a Nominal.
     #[test]
     fn safemode_reset_returns_to_nominal(_ignored: u8) {
         let state = HealthState::SafeMode;
@@ -110,5 +110,5 @@ proptest! {
 }
 
 fn main() {
-    println!("Run with: cargo test --example 02_proptest_state_machine");
+    println!("Ejecutar con: cargo test --example 02_proptest_state_machine");
 }

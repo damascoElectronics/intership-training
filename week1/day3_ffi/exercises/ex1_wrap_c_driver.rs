@@ -1,46 +1,46 @@
-//! Exercise 1 — Wrap a C hardware driver in a safe Rust API
+//! Ejercicio 1 — Envolver un controlador de hardware C en una API segura de Rust
 //!
-//! Given a fake C ADC (Analog-to-Digital Converter) driver, implement a safe
-//! Rust RAII wrapper that handles the open/close lifecycle automatically.
+//! Dado un controlador falso de ADC (Convertidor Analógico-Digital) en C, implementa un
+//! envoltorio RAII seguro en Rust que gestione el ciclo de vida open/close automáticamente.
 //!
-//! Run tests:  cargo test --example ex1_wrap_c_driver
+//! Ejecutar pruebas:  cargo test --example ex1_wrap_c_driver
 
 #![allow(dead_code, unused_variables)]
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 
-// ── Fake C driver declarations ────────────────────────────────────────────────
-// In a real project these would come from a C library compiled via build.rs.
-// Here we provide Rust stubs that simulate the C interface.
+// ── Declaraciones del controlador C falso ────────────────────────────────────────────────
+// En un proyecto real estas vendrían de una biblioteca C compilada a través de build.rs.
+// Aquí proporcionamos stubs de Rust que simulan la interfaz C.
 
-/// Simulated C ADC driver (normally declared in a C header file).
+/// Controlador ADC de C simulado (normalmente declarado en un archivo de cabecera C).
 mod ffi {
     use std::os::raw::{c_char, c_int};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     static OPEN: AtomicBool = AtomicBool::new(false);
 
-    /// Opens the ADC device. Returns a handle (>0) or -1 on error.
+    /// Abre el dispositivo ADC. Devuelve un handle (>0) o -1 en caso de error.
     pub unsafe extern "C" fn adc_open(device_path: *const c_char) -> c_int {
         if device_path.is_null() { return -1; }
         let path = unsafe { std::ffi::CStr::from_ptr(device_path) }.to_str().unwrap_or("");
         if path == "/dev/adc0" {
             OPEN.store(true, Ordering::SeqCst);
-            42 // fake file descriptor
+            42 // descriptor de archivo falso
         } else {
             -1
         }
     }
 
-    /// Reads one ADC sample. Returns 0 on success, fills *value. Returns -1 on error.
+    /// Lee una muestra ADC. Devuelve 0 en éxito, rellena *value. Devuelve -1 en error.
     pub unsafe extern "C" fn adc_read(handle: c_int, value: *mut u16) -> c_int {
         if handle != 42 || value.is_null() { return -1; }
-        unsafe { *value = 2048; } // midscale 12-bit value
+        unsafe { *value = 2048; } // valor de punto medio 12-bit
         0
     }
 
-    /// Closes the ADC handle.
+    /// Cierra el handle ADC.
     pub unsafe extern "C" fn adc_close(handle: c_int) {
         if handle == 42 {
             OPEN.store(false, Ordering::SeqCst);
@@ -48,60 +48,60 @@ mod ffi {
     }
 }
 
-// ── Your implementation ───────────────────────────────────────────────────────
+// ── Tu implementación ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
 pub enum AdcError {
-    #[error("failed to open ADC device: {path}")]
+    #[error("falló al abrir el dispositivo ADC: {path}")]
     OpenFailed { path: String },
-    #[error("read failed")]
+    #[error("lectura fallida")]
     ReadFailed,
-    #[error("invalid device path contains null byte")]
+    #[error("la ruta del dispositivo contiene un byte nulo inválido")]
     NullByte(#[from] std::ffi::NulError),
 }
 
-/// A safe RAII handle to a C ADC driver.
+/// Un handle RAII seguro para un controlador ADC de C.
 ///
-/// The device is closed automatically when this struct is dropped.
+/// El dispositivo se cierra automáticamente cuando se descarta este struct.
 pub struct AdcHandle {
-    // TODO: add a field to store the raw C file descriptor (i32)
-    // TODO: add a field to store the device path (for error messages)
-    _private: (), // remove this when you add your fields
+    // TODO: agregar un campo para almacenar el descriptor de archivo C crudo (i32)
+    // TODO: agregar un campo para almacenar la ruta del dispositivo (para mensajes de error)
+    _private: (), // eliminar esto cuando agregues tus campos
 }
 
 impl AdcHandle {
-    /// Opens the ADC device at `path`.
+    /// Abre el dispositivo ADC en `path`.
     ///
-    /// # Errors
-    /// Returns [`AdcError::OpenFailed`] if the C `adc_open` call returns -1.
+    /// # Errores
+    /// Devuelve [`AdcError::OpenFailed`] si la llamada C `adc_open` devuelve -1.
     pub fn open(path: &str) -> Result<Self, AdcError> {
         todo!(
-            "1. Convert path to CString (returns Err on embedded null bytes)
-             2. Call ffi::adc_open(cstr.as_ptr()) in an unsafe block
-             3. If result < 0: return Err(AdcError::OpenFailed)
-             4. Return Ok(Self {{ handle: result, path: path.to_owned() }})"
+            "1. Convertir path a CString (devuelve Err en bytes nulos embebidos)
+             2. Llamar ffi::adc_open(cstr.as_ptr()) en un bloque unsafe
+             3. Si result < 0: devolver Err(AdcError::OpenFailed)
+             4. Devolver Ok(Self {{ handle: result, path: path.to_owned() }})"
         )
     }
 
-    /// Reads one ADC sample (12-bit, 0–4095).
+    /// Lee una muestra ADC (12-bit, 0–4095).
     pub fn read(&self) -> Result<u16, AdcError> {
         todo!(
-            "1. Declare: let mut value: u16 = 0;
-             2. Call ffi::adc_read(self.handle, &mut value as *mut u16) in unsafe
-             3. If result != 0: return Err(AdcError::ReadFailed)
-             4. Return Ok(value)"
+            "1. Declarar: let mut value: u16 = 0;
+             2. Llamar ffi::adc_read(self.handle, &mut value as *mut u16) en unsafe
+             3. Si result != 0: devolver Err(AdcError::ReadFailed)
+             4. Devolver Ok(value)"
         )
     }
 }
 
 impl Drop for AdcHandle {
     fn drop(&mut self) {
-        // TODO: call ffi::adc_close(self.handle) in unsafe
-        todo!("close the handle")
+        // TODO: llamar ffi::adc_close(self.handle) en unsafe
+        todo!("cerrar el handle")
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Pruebas ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -109,9 +109,9 @@ mod tests {
 
     #[test]
     fn open_valid_device() {
-        let handle = AdcHandle::open("/dev/adc0").expect("should open");
-        let value = handle.read().expect("should read");
-        assert_eq!(value, 2048); // our fake ADC always returns midscale
+        let handle = AdcHandle::open("/dev/adc0").expect("debería abrirse");
+        let value = handle.read().expect("debería leer");
+        assert_eq!(value, 2048); // nuestro ADC falso siempre devuelve el punto medio
     }
 
     #[test]
@@ -123,16 +123,16 @@ mod tests {
 
     #[test]
     fn raii_drop_closes_handle() {
-        // After drop, opening the same device should succeed again
-        // (our fake driver tracks open state)
+        // Después del drop, abrir el mismo dispositivo debería tener éxito de nuevo
+        // (nuestro controlador falso rastrea el estado abierto)
         {
             let _handle = AdcHandle::open("/dev/adc0").unwrap();
-        } // dropped here
-        // Should be able to open again
-        let _handle2 = AdcHandle::open("/dev/adc0").expect("should reopen after drop");
+        } // descartado aquí
+        // Debería poder abrirse de nuevo
+        let _handle2 = AdcHandle::open("/dev/adc0").expect("debería reabrirse después del drop");
     }
 }
 
 fn main() {
-    println!("Run tests with: cargo test --example ex1_wrap_c_driver");
+    println!("Ejecutar pruebas con: cargo test --example ex1_wrap_c_driver");
 }

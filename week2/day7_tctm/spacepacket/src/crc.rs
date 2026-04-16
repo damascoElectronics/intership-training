@@ -1,16 +1,16 @@
-//! CRC-CCITT (CRC-16/CCITT-FALSE) as required by ECSS-E-ST-70-41C §A.3.
+//! CRC-CCITT (CRC-16/CCITT-FALSE) según lo exigido por ECSS-E-ST-70-41C §A.3.
 //!
-//! Parameters:
-//! - Polynomial : 0x1021
-//! - Initial value: 0xFFFF
-//! - Input reflection : false
-//! - Output reflection: false
-//! - XOR out : 0x0000
+//! Parámetros:
+//! - Polinomio       : 0x1021
+//! - Valor inicial   : 0xFFFF
+//! - Reflexión entrada : false
+//! - Reflexión salida  : false
+//! - XOR salida      : 0x0000
 //!
-//! This is a table-driven implementation (O(n) with small constant).
-//! The lookup table is computed at compile time.
+//! Esta es una implementación basada en tabla (O(n) con constante pequeña).
+//! La tabla de búsqueda se calcula en tiempo de compilación.
 
-/// Pre-computed CRC-CCITT lookup table (polynomial 0x1021).
+/// Tabla de búsqueda CRC-CCITT precalculada (polinomio 0x1021).
 const TABLE: [u16; 256] = {
     let mut table = [0u16; 256];
     let mut i = 0usize;
@@ -31,19 +31,19 @@ const TABLE: [u16; 256] = {
     table
 };
 
-/// Computes the CRC-CCITT checksum over `data`.
+/// Calcula el checksum CRC-CCITT sobre `data`.
 ///
-/// The checksum is appended as the last 2 bytes of every PUS packet
-/// (big-endian, MSB first).  A receiver verifies by running CRC over the
-/// entire packet *including* the appended CRC — the result should be 0x1D0F
-/// (the residue of this algorithm).
+/// El checksum se añade como los últimos 2 bytes de cada paquete PUS
+/// (big-endian, MSB primero). Un receptor verifica ejecutando el CRC sobre el
+/// paquete completo *incluyendo* el CRC añadido — el resultado debe ser 0x1D0F
+/// (el residuo de este algoritmo).
 ///
-/// # Examples
+/// # Ejemplos
 ///
 /// ```
 /// use spacepacket::crc::crc_ccitt;
 ///
-/// // ECSS test vector: b"123456789" → 0x29B1
+/// // Vector de prueba ECSS: b"123456789" → 0x29B1
 /// assert_eq!(crc_ccitt(b"123456789"), 0x29B1);
 /// ```
 pub fn crc_ccitt(data: &[u8]) -> u16 {
@@ -55,16 +55,16 @@ pub fn crc_ccitt(data: &[u8]) -> u16 {
     crc
 }
 
-/// Appends the 2-byte CRC-CCITT to `buf` (big-endian).
+/// Añade el CRC-CCITT de 2 bytes a `buf` (big-endian).
 pub fn append_crc(buf: &mut Vec<u8>) {
     let crc = crc_ccitt(buf);
     buf.push((crc >> 8) as u8);
     buf.push(crc as u8);
 }
 
-/// Verifies and strips the trailing 2-byte CRC from `buf`.
+/// Verifica y elimina el CRC de 2 bytes final de `buf`.
 ///
-/// Returns `Err` if the CRC is invalid.
+/// Devuelve `Err` si el CRC no es válido.
 pub fn verify_and_strip_crc(buf: &[u8]) -> Result<&[u8], crate::error::PacketError> {
     if buf.len() < 2 {
         return Err(crate::error::PacketError::BufferTooShort { need: 2, got: buf.len() });
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn ecss_test_vector() {
-        // Official ECSS CRC-CCITT test vector
+        // Vector de prueba CRC-CCITT oficial de ECSS
         assert_eq!(crc_ccitt(b"123456789"), 0x29B1);
     }
 
@@ -101,7 +101,7 @@ mod tests {
     fn detects_corruption() {
         let mut buf = b"some packet data".to_vec();
         append_crc(&mut buf);
-        // Flip a bit
+        // Invertir un bit
         buf[3] ^= 0x01;
         assert!(verify_and_strip_crc(&buf).is_err());
     }
