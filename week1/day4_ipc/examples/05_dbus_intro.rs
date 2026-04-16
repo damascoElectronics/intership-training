@@ -1,24 +1,24 @@
-//! Example 05 — D-Bus with zbus
+//! Ejemplo 05 — D-Bus con zbus
 //!
-//! D-Bus is the standard IPC system on Linux desktops and embedded systems.
-//! Key features:
-//!  - Service registry: find other services by well-known name
-//!  - Method calls: request/response like a function call across processes
-//!  - Signals: broadcast events to all interested parties
-//!  - Introspection: services describe their interface (like an API schema)
+//! D-Bus es el sistema IPC estándar en escritorios Linux y sistemas embebidos.
+//! Características clave:
+//!  - Registro de servicios: encontrar otros servicios por nombre conocido
+//!  - Llamadas a métodos: solicitud/respuesta como una llamada de función entre procesos
+//!  - Señales: eventos de difusión a todas las partes interesadas
+//!  - Introspección: los servicios describen su interfaz (como un esquema de API)
 //!
-//! On spacecraft OBCs running embedded Linux, D-Bus is used for:
-//!  - Health status queries: "what is the thermal controller's current state?"
-//!  - Service discovery: "is the comms subsystem available?"
-//!  - Mode change notifications: "system is entering safe mode"
+//! En OBCs de naves espaciales con Linux embebido, D-Bus se usa para:
+//!  - Consultas de estado de salud: "¿cuál es el estado actual del controlador térmico?"
+//!  - Descubrimiento de servicios: "¿está disponible el subsistema de comunicaciones?"
+//!  - Notificaciones de cambio de modo: "el sistema está entrando en modo seguro"
 //!
-//! Run with:  cargo run --example 05_dbus_intro
-//!            (requires dbus session daemon, e.g., `dbus-daemon --session --fork`)
+//! Ejecutar con:  cargo run --example 05_dbus_intro
+//!            (requiere el daemon de sesión dbus, ej., `dbus-daemon --session --fork`)
 
 use zbus::{connection, interface, proxy};
 
-/// The D-Bus interface our server exposes.
-/// zbus generates all the glue code from this trait.
+/// La interfaz D-Bus que expone nuestro servidor.
+/// zbus genera todo el código de pegamento a partir de este trait.
 struct HealthService {
     component_name: String,
     health_state: String,
@@ -26,25 +26,25 @@ struct HealthService {
 
 #[interface(name = "org.spacecraft.Health")]
 impl HealthService {
-    /// Returns the current health state of this component.
+    /// Devuelve el estado de salud actual de este componente.
     async fn get_health(&self) -> String {
         format!("{}: {}", self.component_name, self.health_state)
     }
 
-    /// Returns the component name.
+    /// Devuelve el nombre del componente.
     async fn get_name(&self) -> &str {
         &self.component_name
     }
 
-    /// Simulates setting the health state.
+    /// Simula establecer el estado de salud.
     async fn set_health(&mut self, state: String) {
-        println!("[server] health state changed: {}", state);
+        println!("[servidor] estado de salud cambiado: {}", state);
         self.health_state = state;
     }
 }
 
-/// A D-Bus proxy for the HealthService interface.
-/// This is the client-side generated code.
+/// Un proxy D-Bus para la interfaz HealthService.
+/// Este es el código generado del lado del cliente.
 #[proxy(
     interface = "org.spacecraft.Health",
     default_service = "org.spacecraft.ThermalDaemon",
@@ -58,20 +58,20 @@ trait Health {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== D-Bus IPC with zbus ===\n");
+    println!("=== IPC con D-Bus usando zbus ===\n");
 
-    // Create connection to the session bus
+    // Crear conexión al bus de sesión
     let conn = match connection::Builder::session()?.build().await {
         Ok(c) => c,
         Err(e) => {
-            println!("Cannot connect to D-Bus session bus: {e}");
-            println!("Start a session bus with: dbus-daemon --session --fork --print-address");
-            println!("Or set: export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus_test.sock");
+            println!("No se puede conectar al bus de sesión D-Bus: {e}");
+            println!("Iniciar un bus de sesión con: dbus-daemon --session --fork --print-address");
+            println!("O establecer: export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus_test.sock");
             return Ok(());
         }
     };
 
-    // Register our service on the bus
+    // Registrar nuestro servicio en el bus
     let health_svc = HealthService {
         component_name: "ThermalController".into(),
         health_state: "NOMINAL".into(),
@@ -79,24 +79,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     conn.object_server().at("/org/spacecraft/thermal", health_svc).await?;
     conn.request_name("org.spacecraft.ThermalDaemon").await?;
-    println!("Registered as 'org.spacecraft.ThermalDaemon' on session bus");
+    println!("Registrado como 'org.spacecraft.ThermalDaemon' en el bus de sesión");
 
-    // Simulate client queries (in a real system this would be a separate process)
+    // Simular consultas del cliente (en un sistema real esto sería un proceso separado)
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let proxy = HealthProxy::new(&conn).await?;
 
-    println!("\nClient queries:");
+    println!("\nConsultas del cliente:");
     let name   = proxy.get_name().await?;
     let health = proxy.get_health().await?;
     println!("  get_name():   {name}");
     println!("  get_health(): {health}");
 
-    proxy.set_health("DEGRADED: high temperature".into()).await?;
+    proxy.set_health("DEGRADED: temperatura alta".into()).await?;
     let health = proxy.get_health().await?;
-    println!("  After set_health: {health}");
+    println!("  Después de set_health: {health}");
 
-    println!("\nD-Bus is excellent for service introspection:");
+    println!("\nD-Bus es excelente para la introspección de servicios:");
     println!("  $ dbus-send --session --print-reply --dest=org.spacecraft.ThermalDaemon \\");
     println!("    /org/spacecraft/thermal org.spacecraft.Health.GetHealth");
 
