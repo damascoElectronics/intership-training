@@ -1,8 +1,8 @@
-//! HK Service — PUS Service 3 Housekeeping daemon.
+//! Servicio HK — daemon de Housekeeping PUS Servicio 3.
 //!
-//! On TC(3,129) request: reads /proc/uptime and /proc/self/status,
-//! packs TM(3,25) Housekeeping Parameter Report, sends it back to the
-//! router for downlinking.
+//! Ante una solicitud TC(3,129): lee /proc/uptime y /proc/self/status,
+//! empaqueta TM(3,25) Informe de Parámetros de Housekeeping, y lo envía de vuelta al
+//! router para el enlace descendente.
 
 use obc_core::SpacePacket;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -12,7 +12,7 @@ use tracing::{error, info};
 const HK_SOCKET: &str = "/tmp/obc_hk.sock";
 const ROUTER_SOCKET: &str = "/tmp/obc_router.sock";
 
-/// Reads system uptime from /proc/uptime (first number, in seconds).
+/// Lee el tiempo de actividad del sistema desde /proc/uptime (primer número, en segundos).
 async fn read_uptime_s() -> f64 {
     match tokio::fs::read_to_string("/proc/uptime").await {
         Ok(s) => s.split_whitespace().next()
@@ -22,7 +22,7 @@ async fn read_uptime_s() -> f64 {
     }
 }
 
-/// Reads VmRSS (resident set size in kB) from /proc/self/status.
+/// Lee VmRSS (tamaño del conjunto residente en kB) desde /proc/self/status.
 async fn read_rss_kb() -> u64 {
     match tokio::fs::read_to_string("/proc/self/status").await {
         Ok(s) => {
@@ -51,10 +51,10 @@ async fn build_hk_report(request: &SpacePacket) -> Vec<u8> {
 
     let app_data = report.to_string().into_bytes();
     let tm = SpacePacket::new_tm(
-        0x003,              // APID: HK service TM
-        request.seq_count,  // mirror the TC sequence count
-        3,                  // PUS service 3
-        25,                 // subservice 25: HK parameter report
+        0x003,              // APID: TM del servicio HK
+        request.seq_count,  // reflejar el contador de secuencia del TC
+        3,                  // PUS servicio 3
+        25,                 // subservicio 25: informe de parámetros HK
         app_data,
     );
 
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = std::fs::remove_file(HK_SOCKET);
     let listener = UnixListener::bind(HK_SOCKET)?;
-    info!("HK service listening on {HK_SOCKET}");
+    info!("Servicio HK escuchando en {HK_SOCKET}");
 
     loop {
         match listener.accept().await {
@@ -91,22 +91,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let pkt: SpacePacket = match bincode::serde::decode_from_slice(
                             &buf, bincode::config::standard()) {
                             Ok((p, _)) => p,
-                            Err(e) => { error!("parse error: {e}"); break; }
+                            Err(e) => { error!("error de análisis: {e}"); break; }
                         };
 
                         if pkt.service == 3 && pkt.subservice == 129 {
-                            info!("received TC(3,129): building HK report");
+                            info!("recibido TC(3,129): construyendo informe HK");
                             let report = build_hk_report(&pkt).await;
                             if let Err(e) = send_to_router(&report).await {
-                                error!("failed to send TM to router: {e}");
+                                error!("fallo al enviar TM al router: {e}");
                             } else {
-                                info!("sent TM(3,25) HK report ({} bytes)", report.len());
+                                info!("enviado TM(3,25) informe HK ({} bytes)", report.len());
                             }
                         }
                     }
                 });
             }
-            Err(e) => error!("accept: {e}"),
+            Err(e) => error!("aceptación: {e}"),
         }
     }
 }

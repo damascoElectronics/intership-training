@@ -1,18 +1,18 @@
-//! Exercise 1 — TM bus: fan-out telemetry to subscribers
+//! Ejercicio 1 — Bus TM: distribuir telemetría a suscriptores
 //!
-//! Implement a simple telemetry bus that routes TM frames by APID.
-//! Multiple producers push frames; a router dispatches to subscribers.
+//! Implementa un bus de telemetría simple que enruta tramas TM por APID.
+//! Múltiples productores envían tramas; un enrutador las despacha a los suscriptores.
 //!
-//! Run tests:  cargo test --example ex1_tm_bus
+//! Ejecutar pruebas:  cargo test --example ex1_tm_bus
 
 #![allow(dead_code, unused_variables)]
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-// ─── Pre-written types ────────────────────────────────────────────────────────
+// ─── Tipos pre-escritos ────────────────────────────────────────────────────────
 
-/// A simple telemetry frame (stripped-down CCSDS-inspired structure).
+/// Una trama de telemetría simple (estructura inspirada en CCSDS simplificada).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TmFrame {
     pub apid: u16,
@@ -28,33 +28,33 @@ impl TmFrame {
     }
 }
 
-// ─── Your implementation ─────────────────────────────────────────────────────
+// ─── Tu implementación ─────────────────────────────────────────────────────────
 
-/// A TM bus router that forwards frames to registered subscribers by APID.
+/// Un enrutador de bus TM que reenvía tramas a los suscriptores registrados por APID.
 pub struct TmBus {
-    /// TODO: add a HashMap<u16, Sender<TmFrame>> for routing
+    /// TODO: agregar un HashMap<u16, Sender<TmFrame>> para el enrutamiento
 }
 
 impl TmBus {
-    /// Creates a new empty TM bus.
+    /// Crea un nuevo bus TM vacío.
     pub fn new() -> Self {
-        todo!("return Self with empty routing table")
+        todo!("devolver Self con tabla de enrutamiento vacía")
     }
 
-    /// Registers a subscriber for a specific APID.
-    /// Returns the [`mpsc::Receiver`] end; the bus keeps the sender.
+    /// Registra un suscriptor para un APID específico.
+    /// Devuelve el extremo [`mpsc::Receiver`]; el bus guarda el sender.
     pub fn subscribe(&mut self, apid: u16) -> mpsc::Receiver<TmFrame> {
-        todo!("create mpsc::channel(16), store sender in routing table, return receiver")
+        todo!("crear mpsc::channel(16), almacenar el sender en la tabla de enrutamiento, devolver el receiver")
     }
 
-    /// Routes a frame to the subscriber registered for its APID.
-    /// If no subscriber is registered, the frame is silently dropped.
+    /// Enruta una trama al suscriptor registrado para su APID.
+    /// Si no hay suscriptor registrado, la trama se descarta silenciosamente.
     pub async fn publish(&self, frame: TmFrame) {
-        todo!("look up frame.apid in routing table, send the frame if found")
+        todo!("buscar frame.apid en la tabla de enrutamiento, enviar la trama si se encuentra")
     }
 }
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+// ─── Pruebas ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -71,7 +71,7 @@ mod tests {
         bus.publish(TmFrame::new(0x002, 2, 2,  1, vec![4, 5, 6])).await;
         bus.publish(TmFrame::new(0x003, 3, 3, 25, vec![7, 8, 9])).await;
 
-        // rx_hk should receive APID 0x003 frames
+        // rx_hk debería recibir tramas de APID 0x003
         let f1 = timeout(Duration::from_millis(50), rx_hk.recv()).await.unwrap().unwrap();
         assert_eq!(f1.apid, 0x003);
         assert_eq!(f1.seq_count, 1);
@@ -79,7 +79,7 @@ mod tests {
         let f2 = timeout(Duration::from_millis(50), rx_hk.recv()).await.unwrap().unwrap();
         assert_eq!(f2.seq_count, 3);
 
-        // rx_sensor should receive APID 0x002 frames
+        // rx_sensor debería recibir tramas de APID 0x002
         let f3 = timeout(Duration::from_millis(50), rx_sensor.recv()).await.unwrap().unwrap();
         assert_eq!(f3.apid, 0x002);
         assert_eq!(f3.seq_count, 2);
@@ -87,13 +87,13 @@ mod tests {
 
     #[tokio::test]
     async fn unregistered_apid_dropped_silently() {
-        let bus = TmBus::new(); // no subscribers
-        // Should not panic or block
+        let bus = TmBus::new(); // sin suscriptores
+        // No debería entrar en pánico ni bloquearse
         bus.publish(TmFrame::new(0x099, 0, 1, 1, vec![])).await;
     }
 }
 
 #[tokio::main]
 async fn main() {
-    println!("Run tests with: cargo test --example ex1_tm_bus");
+    println!("Ejecutar pruebas con: cargo test --example ex1_tm_bus");
 }

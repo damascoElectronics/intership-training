@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution
+//! Ejercicio 1 — Solución
 
 #![allow(dead_code)]
 
@@ -36,7 +36,7 @@ impl TmBus {
 
     pub async fn publish(&self, frame: TmFrame) {
         if let Some(tx) = self.routes.get(&frame.apid) {
-            let _ = tx.send(frame).await; // silently drop if receiver closed
+            let _ = tx.send(frame).await; // descartar silenciosamente si el receptor está cerrado
         }
     }
 }
@@ -77,5 +77,5 @@ mod tests {
 
 #[tokio::main]
 async fn main() {
-    println!("Run tests with: cargo test --example ex1_tm_bus_sol");
+    println!("Ejecutar pruebas con: cargo test --example ex1_tm_bus_sol");
 }

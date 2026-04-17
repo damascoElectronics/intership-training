@@ -1,8 +1,8 @@
-//! Sensor Daemon — simulated hardware interface with built-in FDIR.
+//! Daemon de Sensores — interfaz de hardware simulada con FDIR integrado.
 //!
-//! Generates simulated temperature/pressure sensor readings.
-//! Applies FDIR: after 3 consecutive anomalous readings, marks itself
-//! as Degraded and stops reporting.
+//! Genera lecturas simuladas de sensores de temperatura y presión.
+//! Aplica FDIR: tras 3 lecturas anómalas consecutivas, se marca a sí mismo
+//! como Degradado y deja de reportar.
 
 use obc_core::{HealthState, SpacePacket};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -12,8 +12,8 @@ use tracing::{info, warn};
 const SENSOR_SOCKET: &str = "/tmp/obc_sensor.sock";
 const ROUTER_SOCKET: &str = "/tmp/obc_router.sock";
 
-const TEMP_NOMINAL_MC: i32 = 25_000;  // 25.0 °C in millidegrees
-const TEMP_LIMIT_MC: i32   = 60_000;  // 60.0 °C fault threshold
+const TEMP_NOMINAL_MC: i32 = 25_000;  // 25,0 °C en milligrados
+const TEMP_LIMIT_MC: i32   = 60_000;  // umbral de fallo a 60,0 °C
 const PRESSURE_PA: u32     = 101_325; // 1 atm
 
 struct SensorState {
@@ -27,29 +27,29 @@ impl SensorState {
 
     fn read_temperature_mc(&mut self) -> i32 {
         self.reading_count += 1;
-        // Simulate a slow temperature rise with occasional spikes
+        // Simular un aumento lento de temperatura con picos ocasionales
         let base = TEMP_NOMINAL_MC + (self.reading_count as i32 * 100);
-        // Every 7th reading: inject a spike above limit (simulates transient fault)
+        // Cada 7.ª lectura: inyectar un pico por encima del límite (simula un fallo transitorio)
         if self.reading_count % 7 == 0 {
-            TEMP_LIMIT_MC + 5_000  // over-temperature fault
+            TEMP_LIMIT_MC + 5_000  // fallo de sobretemperatura
         } else {
-            base.min(TEMP_NOMINAL_MC + 10_000) // cap at +10°C nominal drift
+            base.min(TEMP_NOMINAL_MC + 10_000) // limitar a +10°C de deriva nominal
         }
     }
 
     fn apply_fdir(&mut self, temp_mc: i32) {
         if temp_mc > TEMP_LIMIT_MC {
             self.consecutive_faults += 1;
-            warn!("FDIR: anomalous reading temp={:.1}°C (fault #{}/3)",
+            warn!("FDIR: lectura anómala temp={:.1}°C (fallo #{}/3)",
                   temp_mc as f64 / 1000.0, self.consecutive_faults);
             if self.consecutive_faults >= 3 {
                 self.health = HealthState::Degraded {
-                    reason: format!("3 consecutive over-temp readings (last: {:.1}°C)", temp_mc as f64 / 1000.0)
+                    reason: format!("3 lecturas consecutivas de sobretemperatura (última: {:.1}°C)", temp_mc as f64 / 1000.0)
                 };
             }
         } else {
             if self.consecutive_faults > 0 {
-                info!("FDIR: reading nominal again, resetting fault counter");
+                info!("FDIR: lectura nominal de nuevo, reiniciando contador de fallos");
             }
             self.consecutive_faults = 0;
         }
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = std::fs::remove_file(SENSOR_SOCKET);
     let listener = UnixListener::bind(SENSOR_SOCKET)?;
-    info!("Sensor daemon listening on {SENSOR_SOCKET}");
+    info!("Daemon de sensores escuchando en {SENSOR_SOCKET}");
 
     let mut state = SensorState::new();
 
@@ -90,11 +90,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Err(_) => break,
                     };
 
-                    // Read sensor
+                    // Leer sensor
                     let temp_mc = state.read_temperature_mc();
                     state.apply_fdir(temp_mc);
 
-                    // Build response TM
+                    // Construir TM de respuesta
                     let report = serde_json::json!({
                         "temperature_mc": temp_mc,
                         "pressure_pa": PRESSURE_PA,
@@ -106,15 +106,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let bytes = bincode::serde::encode_to_vec(&tm, bincode::config::standard())
                         .unwrap_or_default();
 
-                    info!("sensor reading #{}: temp={:.1}°C health={}",
+                    info!("lectura de sensor #{}: temp={:.1}°C estado={}",
                           state.reading_count, temp_mc as f64 / 1000.0, state.health);
 
                     if let Err(e) = send_to_router(&bytes).await {
-                        warn!("could not send TM to router: {e}");
+                        warn!("no se pudo enviar TM al router: {e}");
                     }
                 }
             }
-            Err(e) => tracing::error!("accept: {e}"),
+            Err(e) => tracing::error!("aceptación: {e}"),
         }
     }
 }

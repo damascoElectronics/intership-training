@@ -1,11 +1,11 @@
-//! Ground Station Simulator — test harness for the OBC software stack.
+//! Simulador de Estación Terrestre — arnés de prueba para la pila de software OBC.
 //!
-//! Sends a sequence of TCs (some valid, some intentionally invalid) to the
-//! tc_receiver and collects TM responses from the downlink socket.
-//! Prints a PASS/FAIL test report at the end.
+//! Envía una secuencia de TCs (algunos válidos, algunos intencionalmente inválidos) al
+//! tc_receiver y recopila respuestas TM desde el socket de enlace descendente.
+//! Imprime un informe de prueba PASS/FAIL al final.
 //!
-//! # How to run the full stack
-//! See `tools/run_obc_stack.sh`, or manually:
+//! # Cómo ejecutar la pila completa
+//! Ver `tools/run_obc_stack.sh`, o manualmente:
 //! ```sh
 //! ./target/debug/tc-receiver &
 //! ./target/debug/obc-router &
@@ -44,7 +44,7 @@ fn sign_and_frame(pkt: &SpacePacket) -> Vec<u8> {
 
 fn frame_with_bad_hmac(pkt: &SpacePacket) -> Vec<u8> {
     let payload = bincode::serde::encode_to_vec(pkt, bincode::config::standard()).unwrap();
-    let bad_mac = [0xFFu8; 32]; // definitely wrong
+    let bad_mac = [0xFFu8; 32]; // definitivamente incorrecto
     let mut framed = Vec::with_capacity(4 + payload.len() + 32);
     framed.extend_from_slice(&((payload.len() + 32) as u32).to_be_bytes());
     framed.extend_from_slice(&payload);
@@ -87,32 +87,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt().with_target(false).with_env_filter("warn").init();
 
     println!("╔══════════════════════════════════════════╗");
-    println!("║    Ground Station Simulator — OBC Test   ║");
+    println!("║  Simulador Estación Terrestre — Prueba OBC ║");
     println!("╚══════════════════════════════════════════╝");
     println!();
 
-    // Set up downlink listener BEFORE sending any TCs
+    // Configurar el listener de enlace descendente ANTES de enviar cualquier TC
     let _ = std::fs::remove_file(DOWNLINK_SOCKET);
     let mut downlink = UnixListener::bind(DOWNLINK_SOCKET)?;
-    info!("Downlink listener ready on {DOWNLINK_SOCKET}");
+    info!("Listener de enlace descendente listo en {DOWNLINK_SOCKET}");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut results: Vec<TestResult> = Vec::new();
     let mut seq: u16 = 0;
 
-    // Connect to TC uplink
+    // Conectar al enlace ascendente TC
     let mut uplink = match UnixStream::connect(TC_UPLINK_SOCKET).await {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("ERROR: cannot connect to {TC_UPLINK_SOCKET}: {e}");
-            eprintln!("Is the tc-receiver running?");
+            eprintln!("ERROR: no se puede conectar a {TC_UPLINK_SOCKET}: {e}");
+            eprintln!("¿Está ejecutándose el tc-receiver?");
             std::process::exit(1);
         }
     };
 
-    // ── Test 1: TC(17,1) ping ──────────────────────────────────────────────
-    println!("[TEST 1] TC(17,1) Are-You-Alive ping");
+    // ── Prueba 1: TC(17,1) ping ──────────────────────────────────────────────
+    println!("[PRUEBA 1] TC(17,1) ping ¿Estás-Vivo?");
     let ping = SpacePacket::new_tc(0x017, seq, 17, 1, vec![]);
     seq += 1;
     uplink.write_all(&sign_and_frame(&ping)).await?;
@@ -121,57 +121,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     results.push(TestResult {
         name: "TC(17,1) → TM(17,2) pong".into(),
         passed: pong_received,
-        detail: if pong_received { "pong received".into() } else { "no TM(17,2) received".into() },
+        detail: if pong_received { "pong recibido".into() } else { "no se recibió TM(17,2)".into() },
     });
 
-    // ── Test 2: TC(3,129) HK request ──────────────────────────────────────
-    println!("[TEST 2] TC(3,129) Housekeeping report request");
+    // ── Prueba 2: TC(3,129) solicitud HK ──────────────────────────────────
+    println!("[PRUEBA 2] TC(3,129) solicitud de informe de Housekeeping");
     let hk_req = SpacePacket::new_tc(0x003, seq, 3, 129, vec![]);
     seq += 1;
     uplink.write_all(&sign_and_frame(&hk_req)).await?;
     let tms = collect_tm(&mut downlink, 1000).await;
     let hk_received = tms.iter().any(|p| p.service == 3 && p.subservice == 25);
     results.push(TestResult {
-        name: "TC(3,129) → TM(3,25) HK report".into(),
+        name: "TC(3,129) → TM(3,25) informe HK".into(),
         passed: hk_received,
         detail: if hk_received {
             let hk = tms.iter().find(|p| p.service == 3).unwrap();
-            format!("HK data: {}", String::from_utf8_lossy(&hk.data))
+            format!("datos HK: {}", String::from_utf8_lossy(&hk.data))
         } else {
-            "no TM(3,25) received".into()
+            "no se recibió TM(3,25)".into()
         },
     });
 
-    // ── Test 3: Bad HMAC should be rejected (no TM comes back) ────────────
-    println!("[TEST 3] TC with bad HMAC should be silently rejected");
+    // ── Prueba 3: HMAC incorrecto debe ser rechazado (no vuelve ningún TM) ────────────
+    println!("[PRUEBA 3] TC con HMAC incorrecto debe ser silenciosamente rechazado");
     let bad_tc = SpacePacket::new_tc(0x017, seq, 17, 1, vec![]);
     seq += 1;
     uplink.write_all(&frame_with_bad_hmac(&bad_tc)).await?;
     let tms = collect_tm(&mut downlink, 300).await;
     let no_response = tms.is_empty();
     results.push(TestResult {
-        name: "bad HMAC → no TM response".into(),
+        name: "HMAC incorrecto → sin respuesta TM".into(),
         passed: no_response,
-        detail: if no_response { "correctly rejected".into() } else { "unexpectedly got TM!".into() },
+        detail: if no_response { "rechazado correctamente".into() } else { "¡se recibió TM inesperadamente!".into() },
     });
 
-    // ── Test 4: Replay — send the same seq_count again ────────────────────
-    println!("[TEST 4] Replay attack should be rejected");
-    // Re-send test 1's ping with the same seq_count (0)
-    let replay_ping = SpacePacket::new_tc(0x017, 0 /* same seq as test 1 */, 17, 1, vec![]);
+    // ── Prueba 4: Repetición — enviar el mismo seq_count de nuevo ────────────────────
+    println!("[PRUEBA 4] El ataque de repetición debe ser rechazado");
+    // Reenviar el ping de la prueba 1 con el mismo seq_count (0)
+    let replay_ping = SpacePacket::new_tc(0x017, 0 /* mismo seq que prueba 1 */, 17, 1, vec![]);
     uplink.write_all(&sign_and_frame(&replay_ping)).await?;
     let tms = collect_tm(&mut downlink, 300).await;
     let replay_rejected = tms.is_empty();
     results.push(TestResult {
-        name: "replay (dup seq) → rejected".into(),
+        name: "repetición (seq duplicado) → rechazado".into(),
         passed: replay_rejected,
-        detail: if replay_rejected { "correctly rejected".into() } else { "replay was accepted!".into() },
+        detail: if replay_rejected { "rechazado correctamente".into() } else { "¡la repetición fue aceptada!".into() },
     });
 
-    // ── Print summary ──────────────────────────────────────────────────────
+    // ── Imprimir resumen ──────────────────────────────────────────────────────
     println!();
     println!("══════════════════════════════════════════");
-    println!("  Test Results");
+    println!("  Resultados de las Pruebas");
     println!("══════════════════════════════════════════");
     let pass_count = results.iter().filter(|r| r.passed).count();
     for r in &results {
@@ -180,7 +180,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("         {}", r.detail);
     }
     println!();
-    println!("  {pass_count}/{} tests passed", results.len());
+    println!("  {pass_count}/{} pruebas pasadas", results.len());
     println!("══════════════════════════════════════════");
 
     if pass_count < results.len() {
