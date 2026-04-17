@@ -1,6 +1,6 @@
 # Rust Embedded Spacecraft Software — Preparación para Pasantía de 2 Semanas
 
-Un repositorio de entrenamiento estructurado y práctico para el rol de **Ingeniero de Software Embebido para Naves Espaciales (Rust)**.
+Un repositorio de entrenamiento estructurado y práctico para el rol de **Ingeniero de Software Embebido con use en Rust**.
 Cada tema está fundamentado en patrones reales de software de naves espaciales.
 
 ---
