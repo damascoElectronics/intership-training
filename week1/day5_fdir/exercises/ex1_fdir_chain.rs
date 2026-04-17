@@ -1,9 +1,9 @@
-//! Exercise 1 — Compose a FDIR chain: watchdog + circuit breaker + supervisor
+//! Ejercicio 1 — Componer una cadena FDIR: watchdog + circuit breaker + supervisor
 //!
-//! Wire together the three FDIR patterns from this day's examples into a
-//! complete chain that protects access to a simulated ADC daemon.
+//! Conecta los tres patrones FDIR de los ejemplos del día en una cadena
+//! completa que protege el acceso a un daemon ADC simulado.
 //!
-//! Run tests:  cargo test --example ex1_fdir_chain
+//! Ejecutar tests:  cargo test --example ex1_fdir_chain
 
 #![allow(dead_code, unused_variables)]
 
@@ -12,9 +12,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-// ─── Pre-written types ────────────────────────────────────────────────────────
+// ─── Tipos predefinidos ───────────────────────────────────────────────────────
 
-/// A simulated ADC that fails randomly (30% chance per read).
+/// Un ADC simulado que falla aleatoriamente (30% de probabilidad por lectura).
 #[derive(Clone)]
 pub struct FlakyAdc {
     pub read_count: Arc<AtomicU32>,
@@ -29,21 +29,21 @@ impl FlakyAdc {
         }
     }
 
-    /// Returns a reading or an error (30% failure rate).
+    /// Devuelve una lectura o un error (tasa de fallo del 30%).
     pub async fn read(&self) -> Result<u16, &'static str> {
         let n = self.read_count.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(Duration::from_millis(5)).await;
         if n % 3 == 2 {
-            // Every 3rd read fails (33%)
+            // Cada 3ª lectura falla (33%)
             self.fail_count.fetch_add(1, Ordering::SeqCst);
-            Err("ADC read error: device timeout")
+            Err("Error de lectura ADC: timeout del dispositivo")
         } else {
-            Ok((n * 17 % 4096) as u16) // fake but deterministic value
+            Ok((n * 17 % 4096) as u16) // valor falso pero determinista
         }
     }
 }
 
-/// Health states
+/// Estados de salud
 #[derive(Debug, Clone, PartialEq)]
 pub enum HealthState {
     Nominal,
@@ -51,11 +51,11 @@ pub enum HealthState {
     Failed { reason: String },
 }
 
-// ─── Your implementation ─────────────────────────────────────────────────────
+// ─── Tu implementación ───────────────────────────────────────────────────────
 
-/// A circuit breaker with three states.
+/// Un cortacircuito con tres estados.
 pub struct CircuitBreaker {
-    // TODO: add fields: state (enum), failure_count, threshold, recovery_timeout
+    // TODO: añadir campos: state (enum), failure_count, threshold, recovery_timeout
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -69,29 +69,29 @@ pub enum BreakerError {
 
 impl CircuitBreaker {
     pub fn new(threshold: u32, recovery_timeout: Duration) -> Self {
-        todo!("initialize with Closed state, 0 failures, given threshold and timeout")
+        todo!("inicializar con estado Closed, 0 fallos, threshold y timeout dados")
     }
 
-    /// Attempts to call `f`. If the breaker is Open, returns `Err(BreakerError::Open)`.
-    /// If `f` fails, increments failure count; above threshold, opens the breaker.
+    /// Intenta llamar a `f`. Si el breaker está Open, devuelve `Err(BreakerError::Open)`.
+    /// Si `f` falla, incrementa el contador de fallos; al superar el threshold, abre el breaker.
     pub async fn call<F, Fut, T>(&self, f: F) -> Result<T, BreakerError>
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<T, String>>,
     {
         todo!(
-            "1. If state == Open and not enough time passed: return Err(BreakerError::Open)
-             2. If state == Open and recovery_timeout elapsed: set state = HalfOpen
-             3. Call f()
-             4. On success: reset failure_count, set state = Closed, return Ok
-             5. On failure: increment failure_count
-                - If failure_count >= threshold: set state = Open, record time
-                - Return Err(BreakerError::Underlying(...))"
+            "1. Si state == Open y no ha pasado suficiente tiempo: devolver Err(BreakerError::Open)
+             2. Si state == Open y recovery_timeout ha transcurrido: establecer state = HalfOpen
+             3. Llamar a f()
+             4. En éxito: resetear failure_count, establecer state = Closed, devolver Ok
+             5. En fallo: incrementar failure_count
+                - Si failure_count >= threshold: establecer state = Open, registrar tiempo
+                - Devolver Err(BreakerError::Underlying(...))"
         )
     }
 
     pub fn state(&self) -> BreakerState {
-        todo!("return current state")
+        todo!("devolver el estado actual")
     }
 }
 
@@ -106,23 +106,23 @@ mod tests {
         let breaker = CircuitBreaker::new(3, Duration::from_secs(10));
         let adc = FlakyAdc::new();
 
-        // Force failures by injecting an always-failing call
-        let always_fail = || async { Err::<u16, _>("forced failure".to_string()) };
+        // Forzar fallos inyectando una llamada que siempre falla
+        let always_fail = || async { Err::<u16, _>("fallo forzado".to_string()) };
 
         for _ in 0..3 {
             let _ = breaker.call(always_fail).await;
         }
-        assert_eq!(breaker.state(), BreakerState::Open, "breaker should be open after 3 failures");
+        assert_eq!(breaker.state(), BreakerState::Open, "el breaker debe estar abierto tras 3 fallos");
     }
 
     #[tokio::test]
     async fn circuit_open_rejects_immediately() {
         let breaker = Arc::new(CircuitBreaker::new(1, Duration::from_secs(60)));
-        // Open the breaker
-        let _ = breaker.call(|| async { Err::<u16, _>("fail".to_string()) }).await;
+        // Abrir el breaker
+        let _ = breaker.call(|| async { Err::<u16, _>("fallo".to_string()) }).await;
         assert_eq!(breaker.state(), BreakerState::Open);
 
-        // Next call should be rejected without calling f
+        // La siguiente llamada debe ser rechazada sin llamar a f
         let calls = Arc::new(AtomicU32::new(0));
         let c = calls.clone();
         let result = breaker.call(move || {
@@ -131,7 +131,7 @@ mod tests {
         }).await;
 
         assert!(matches!(result, Err(BreakerError::Open)));
-        assert_eq!(calls.load(Ordering::SeqCst), 0, "f should not be called when breaker is open");
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "f no debe ser llamado cuando el breaker está abierto");
     }
 
     #[tokio::test]
@@ -139,7 +139,7 @@ mod tests {
         let health = Arc::new(Mutex::new(HealthState::Nominal));
         let adc = FlakyAdc::new();
 
-        // Simulate reading 10 times; every 3rd fails
+        // Simular 10 lecturas; cada 3ª falla
         let mut failures = 0;
         for _ in 0..10 {
             if adc.read().await.is_err() {
@@ -147,21 +147,21 @@ mod tests {
             }
         }
 
-        // After 3 failures, mark as degraded
+        // Tras 3 fallos, marcar como degradado
         if failures >= 3 {
             *health.lock().await = HealthState::Degraded {
-                reason: format!("{failures} failures observed"),
+                reason: format!("{failures} fallos observados"),
             };
         }
 
         assert!(
             !matches!(*health.lock().await, HealthState::Nominal),
-            "health should be degraded after failures"
+            "la salud debe estar degradada tras los fallos"
         );
     }
 }
 
 #[tokio::main]
 async fn main() {
-    println!("Run tests with: cargo test --example ex1_fdir_chain");
+    println!("Ejecuta los tests con: cargo test --example ex1_fdir_chain");
 }

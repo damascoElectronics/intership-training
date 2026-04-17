@@ -1,4 +1,4 @@
-//! Task supervisor — restarts the sensor reader task on failure.
+//! Supervisor de tareas — reinicia la tarea de lectura del sensor en caso de fallo.
 
 use crate::health::{HealthState, HealthTable};
 use crate::sensor::{self, SensorFrame};
@@ -34,7 +34,7 @@ impl Supervisor {
         let telem = Arc::clone(&self.telem);
         let shutdown = self.shutdown.clone();
 
-        // Spawn TM consumer task
+        // Lanzar tarea consumidora de TM
         let consumer_shutdown = shutdown.clone();
         tokio::spawn(async move {
             loop {
@@ -47,37 +47,37 @@ impl Supervisor {
             }
         });
 
-        // Supervisor loop
+        // Bucle del supervisor
         loop {
             if shutdown.is_cancelled() { break; }
 
             let child_token = shutdown.child_token();
             let task_tx = tx.clone();
 
-            info!(attempt = restarts + 1, "starting sensor reader task");
+            info!(attempt = restarts + 1, "iniciando tarea de lectura de sensor");
             health.write().await.set("sensor", HealthState::Nominal);
 
             let result = sensor::read_sensor_frames(task_tx, child_token).await;
 
             match result {
                 Ok(()) => {
-                    info!("sensor task exited cleanly");
+                    info!("tarea sensor terminó limpiamente");
                     break;
                 }
                 Err(e) => {
                     restarts += 1;
                     let reason = e.to_string();
-                    warn!(restarts, reason, "sensor task failed");
+                    warn!(restarts, reason, "tarea sensor falló");
 
                     if restarts >= MAX_RESTARTS {
-                        error!("max restarts ({MAX_RESTARTS}) exceeded, marking as FAILED");
+                        error!("máximo de reinicios ({MAX_RESTARTS}) superado, marcando como FALLIDO");
                         health.write().await.set("sensor", HealthState::Failed { reason });
                         break;
                     } else {
                         health.write().await.set("sensor", HealthState::Degraded { reason });
-                        // Exponential backoff
+                        // Retroceso exponencial
                         let delay_ms = BASE_BACKOFF_MS * (1u64 << restarts.min(6));
-                        warn!(delay_ms, "backing off before restart");
+                        warn!(delay_ms, "esperando antes de reiniciar");
                         tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                     }
                 }

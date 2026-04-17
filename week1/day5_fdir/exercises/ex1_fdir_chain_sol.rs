@@ -1,4 +1,4 @@
-//! Exercise 1 — Solution
+//! Ejercicio 1 — Solución
 
 #![allow(dead_code)]
 
@@ -55,7 +55,7 @@ impl CircuitBreaker {
 
     pub async fn call<F, Fut, T>(&self, f: F) -> Result<T, BreakerError>
     where F: FnOnce() -> Fut, Fut: std::future::Future<Output = Result<T, String>> {
-        // Check state
+        // Comprobar estado
         {
             let mut state = self.state.lock().await;
             if *state == BreakerState::Open {
@@ -67,7 +67,7 @@ impl CircuitBreaker {
             }
         }
 
-        // Call the function
+        // Llamar a la función
         match f().await {
             Ok(v) => {
                 self.failure_count.store(0, Ordering::SeqCst);
@@ -86,7 +86,7 @@ impl CircuitBreaker {
     }
 
     pub fn state(&self) -> BreakerState {
-        *self.state.try_lock().unwrap_or_else(|_| panic!("lock poisoned"))
+        *self.state.try_lock().unwrap_or_else(|_| panic!("mutex envenenado"))
     }
 }
 
@@ -98,7 +98,7 @@ mod tests {
     async fn circuit_opens_after_threshold() {
         let breaker = CircuitBreaker::new(3, Duration::from_secs(10));
         for _ in 0..3 {
-            let _ = breaker.call(|| async { Err::<u16, _>("forced failure".into()) }).await;
+            let _ = breaker.call(|| async { Err::<u16, _>("fallo forzado".into()) }).await;
         }
         assert_eq!(breaker.state(), BreakerState::Open);
     }
@@ -106,7 +106,7 @@ mod tests {
     #[tokio::test]
     async fn circuit_open_rejects_immediately() {
         let breaker = Arc::new(CircuitBreaker::new(1, Duration::from_secs(60)));
-        let _ = breaker.call(|| async { Err::<u16, _>("fail".into()) }).await;
+        let _ = breaker.call(|| async { Err::<u16, _>("fallo".into()) }).await;
         let calls = Arc::new(AtomicU32::new(0));
         let c = calls.clone();
         let result = breaker.call(move || { c.fetch_add(1, Ordering::SeqCst); async { Ok::<u16, String>(42) } }).await;
@@ -121,7 +121,7 @@ mod tests {
         let mut failures = 0;
         for _ in 0..10 { if adc.read().await.is_err() { failures += 1; } }
         if failures >= 3 {
-            *health.lock().await = HealthState::Degraded { reason: format!("{failures} failures") };
+            *health.lock().await = HealthState::Degraded { reason: format!("{failures} fallos") };
         }
         assert!(!matches!(*health.lock().await, HealthState::Nominal));
     }
@@ -129,5 +129,5 @@ mod tests {
 
 #[tokio::main]
 async fn main() {
-    println!("Run tests with: cargo test --example ex1_fdir_chain_sol");
+    println!("Ejecuta los tests con: cargo test --example ex1_fdir_chain_sol");
 }

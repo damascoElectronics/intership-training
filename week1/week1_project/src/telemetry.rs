@@ -1,4 +1,4 @@
-//! Ring-buffer telemetry store.
+//! Almacén de telemetría con buffer circular.
 
 use std::collections::VecDeque;
 use crate::sensor::SensorFrame;

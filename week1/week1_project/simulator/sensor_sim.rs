@@ -1,11 +1,11 @@
-//! Sensor simulator — companion binary for the sensor daemon.
+//! Simulador de sensor — binario complementario para el daemon sensor.
 //!
-//! Listens on a Unix socket, accepts one connection, and streams
-//! SensorFrame messages every 200ms.  Every 10th frame injects a fault.
+//! Escucha en un socket Unix, acepta una conexión y transmite
+//! mensajes SensorFrame cada 200ms. Cada 10ª trama inyecta un fallo.
 //!
-//! Usage:
-//!   cargo run --bin sensor-sim        # normal mode
-//!   cargo run --bin sensor-sim crash  # panics after 20 frames (tests restart)
+//! Uso:
+//!   cargo run --bin sensor-sim        # modo normal
+//!   cargo run --bin sensor-sim crash  # entra en pánico tras 20 tramas (prueba el reinicio)
 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -27,12 +27,12 @@ async fn main() {
     let crash_mode = std::env::args().any(|a| a == "crash");
     let _ = std::fs::remove_file(SOCKET_PATH);
     let listener = UnixListener::bind(SOCKET_PATH).expect("bind");
-    eprintln!("[sim] listening on {SOCKET_PATH}{}",
-              if crash_mode { " (crash mode: will panic after 20 frames)" } else { "" });
+    eprintln!("[sim] escuchando en {SOCKET_PATH}{}",
+              if crash_mode { " (modo crash: entrará en pánico tras 20 tramas)" } else { "" });
 
     loop {
         let (mut stream, _) = listener.accept().await.expect("accept");
-        eprintln!("[sim] client connected");
+        eprintln!("[sim] cliente conectado");
 
         let mut frame_count = 0u32;
         loop {
@@ -40,8 +40,8 @@ async fn main() {
             frame_count += 1;
 
             if crash_mode && frame_count > 20 {
-                eprintln!("[sim] crash mode: panicking!");
-                panic!("deliberate crash to test supervisor restart");
+                eprintln!("[sim] modo crash: ¡entrando en pánico!");
+                panic!("crash deliberado para probar el reinicio del supervisor");
             }
 
             let fault = frame_count % 10 == 0;
@@ -54,7 +54,7 @@ async fn main() {
             };
 
             if fault {
-                eprintln!("[sim] injecting fault in frame #{frame_count}");
+                eprintln!("[sim] inyectando fallo en trama #{frame_count}");
             }
 
             let bytes = bincode::serde::encode_to_vec(&frame, bincode::config::standard())
@@ -62,6 +62,6 @@ async fn main() {
             if stream.write_all(&(bytes.len() as u32).to_be_bytes()).await.is_err() { break; }
             if stream.write_all(&bytes).await.is_err() { break; }
         }
-        eprintln!("[sim] client disconnected");
+        eprintln!("[sim] cliente desconectado");
     }
 }
